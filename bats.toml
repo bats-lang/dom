@@ -1,3 +1,4 @@
 [package]
 name = "wasm.bats-packages.dev/dom"
 kind = "lib"
+unsafe = true
