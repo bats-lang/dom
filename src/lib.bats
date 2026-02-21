@@ -78,7 +78,7 @@ local
 datavtype stream_vt(l:addr) =
   | {l:agz} stream_mk(l) of ($A.arr(byte, l, DOM_BUF_CAP), int)
 
-assume state(l) = ptr l
+assume state(l) = $A.arr(byte, l, 1)
 assume stream(l) = stream_vt(l)
 
 in
@@ -92,15 +92,12 @@ fun _flush_arr{l:agz}
     $UNSAFE begin $UNSAFE.castvwtp1{ptr}(buf) end,
     len)
 
-extern fun _dom_malloc_bytes
-  (n: int): [l:agz] ptr l = "mac#malloc"
+implement init() = $A.alloc<byte>(1)
 
-implement init() = _dom_malloc_bytes(4)
-
-implement fini{l}(s) = $extfcall(void, "free", s)
+implement fini{l}(s) = $A.free<byte>(s)
 
 implement begin_batch{l}(s) = let
-  val () = $extfcall(void, "free", s)
+  val () = $A.free<byte>(s)
   val buf = $A.alloc<byte>(262144)
 in stream_mk(buf, 0) end
 
@@ -108,7 +105,7 @@ implement end_batch{l}(s) = let
   val+ ~stream_mk(buf, c) = s
   val () = if c > 0 then _flush_arr(buf, c)
   val () = $A.free<byte>(buf)
-in _dom_malloc_bytes(4) end
+in $A.alloc<byte>(1) end
 
 fun _auto_flush
   {l:agz}{needed:pos | needed <= DOM_BUF_CAP}
