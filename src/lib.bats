@@ -83,12 +83,12 @@ assume stream(l) = stream_vt(l)
 
 in
 
-extern fun _ward_dom_flush_raw
-  (buf: ptr, len: int): void = "mac#ward_dom_flush"
+extern fun _bats_dom_flush_raw
+  (buf: ptr, len: int): void = "mac#bats_dom_flush"
 
 fun _flush_arr{l:agz}
   (buf: !$A.arr(byte, l, DOM_BUF_CAP), len: int): void =
-  _ward_dom_flush_raw(
+  _bats_dom_flush_raw(
     $UNSAFE begin $UNSAFE.castvwtp1{ptr}(buf) end,
     len)
 
