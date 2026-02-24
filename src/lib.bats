@@ -39,104 +39,40 @@
    ============================================================ *)
 
 (* Attribute names *)
-fn _txt_hidden(): $A.text(6) = let (* "hidden" *)
-  val b = $A.text_build(6)
-  val b = $A.text_putc(b, 0, 104) (* h *)
-  val b = $A.text_putc(b, 1, 105) (* i *)
-  val b = $A.text_putc(b, 2, 100) (* d *)
-  val b = $A.text_putc(b, 3, 100) (* d *)
-  val b = $A.text_putc(b, 4, 101) (* e *)
-  val b = $A.text_putc(b, 5, 110) (* n *)
-in $A.text_done(b) end
-
-fn _txt_class(): $A.text(5) = let (* "class" *)
-  val b = $A.text_build(5)
-  val b = $A.text_putc(b, 0, 99)  (* c *)
-  val b = $A.text_putc(b, 1, 108) (* l *)
-  val b = $A.text_putc(b, 2, 97)  (* a *)
-  val b = $A.text_putc(b, 3, 115) (* s *)
-  val b = $A.text_putc(b, 4, 115) (* s *)
-in $A.text_done(b) end
-
-fn _txt_tabindex(): $A.text(8) = let (* "tabindex" *)
-  val b = $A.text_build(8)
-  val b = $A.text_putc(b, 0, 116) (* t *)
-  val b = $A.text_putc(b, 1, 97)  (* a *)
-  val b = $A.text_putc(b, 2, 98)  (* b *)
-  val b = $A.text_putc(b, 3, 105) (* i *)
-  val b = $A.text_putc(b, 4, 110) (* n *)
-  val b = $A.text_putc(b, 5, 100) (* d *)
-  val b = $A.text_putc(b, 6, 101) (* e *)
-  val b = $A.text_putc(b, 7, 120) (* x *)
-in $A.text_done(b) end
-
-fn _txt_title(): $A.text(5) = let (* "title" *)
-  val b = $A.text_build(5)
-  val b = $A.text_putc(b, 0, 116) (* t *)
-  val b = $A.text_putc(b, 1, 105) (* i *)
-  val b = $A.text_putc(b, 2, 116) (* t *)
-  val b = $A.text_putc(b, 3, 108) (* l *)
-  val b = $A.text_putc(b, 4, 101) (* e *)
-in $A.text_done(b) end
-
-fn _txt_id(): $A.text(2) = let (* "id" *)
-  val b = $A.text_build(2)
-  val b = $A.text_putc(b, 0, 105) (* i *)
-  val b = $A.text_putc(b, 1, 100) (* d *)
-in $A.text_done(b) end
-
-fn _txt_style(): $A.text(5) = let (* "style" *)
-  val b = $A.text_build(5)
-  val b = $A.text_putc(b, 0, 115) (* s *)
-  val b = $A.text_putc(b, 1, 116) (* t *)
-  val b = $A.text_putc(b, 2, 121) (* y *)
-  val b = $A.text_putc(b, 3, 108) (* l *)
-  val b = $A.text_putc(b, 4, 101) (* e *)
-in $A.text_done(b) end
+fn _txt_hidden(): $A.text(6) =
+  $A.text_of_chars(6, @[char][6]('h', 'i', 'd', 'd', 'e', 'n'))
+fn _txt_class(): $A.text(5) =
+  $A.text_of_chars(5, @[char][5]('c', 'l', 'a', 's', 's'))
+fn _txt_tabindex(): $A.text(8) =
+  $A.text_of_chars(8, @[char][8]('t', 'a', 'b', 'i', 'n', 'd', 'e', 'x'))
+fn _txt_title(): $A.text(5) =
+  $A.text_of_chars(5, @[char][5]('t', 'i', 't', 'l', 'e'))
+fn _txt_id(): $A.text(2) =
+  $A.text_of_chars(2, @[char][2]('i', 'd'))
+fn _txt_style(): $A.text(5) =
+  $A.text_of_chars(5, @[char][5]('s', 't', 'y', 'l', 'e'))
 
 (* Tag names for html_normal *)
-fn _tag_div(): $A.text(3) = let
-  val b = $A.text_build(3)
-  val b = $A.text_putc(b, 0, 100) val b = $A.text_putc(b, 1, 105) val b = $A.text_putc(b, 2, 118)
-in $A.text_done(b) end
-
-fn _tag_span(): $A.text(4) = let
-  val b = $A.text_build(4)
-  val b = $A.text_putc(b, 0, 115) val b = $A.text_putc(b, 1, 112) val b = $A.text_putc(b, 2, 97) val b = $A.text_putc(b, 3, 110)
-in $A.text_done(b) end
-
-fn _tag_p(): $A.text(1) = let
-  val b = $A.text_build(1) val b = $A.text_putc(b, 0, 112)
-in $A.text_done(b) end
-
-fn _tag_br(): $A.text(2) = let
-  val b = $A.text_build(2) val b = $A.text_putc(b, 0, 98) val b = $A.text_putc(b, 1, 114)
-in $A.text_done(b) end
-
-fn _tag_hr(): $A.text(2) = let
-  val b = $A.text_build(2) val b = $A.text_putc(b, 0, 104) val b = $A.text_putc(b, 1, 114)
-in $A.text_done(b) end
-
-fn _tag_ul(): $A.text(2) = let
-  val b = $A.text_build(2) val b = $A.text_putc(b, 0, 117) val b = $A.text_putc(b, 1, 108)
-in $A.text_done(b) end
-
-fn _tag_li(): $A.text(2) = let
-  val b = $A.text_build(2) val b = $A.text_putc(b, 0, 108) val b = $A.text_putc(b, 1, 105)
-in $A.text_done(b) end
-
-fn _tag_a(): $A.text(1) = let
-  val b = $A.text_build(1) val b = $A.text_putc(b, 0, 97)
-in $A.text_done(b) end
-
-fn _tag_img(): $A.text(3) = let
-  val b = $A.text_build(3) val b = $A.text_putc(b, 0, 105) val b = $A.text_putc(b, 1, 109) val b = $A.text_putc(b, 2, 103)
-in $A.text_done(b) end
-
-fn _tag_input(): $A.text(5) = let
-  val b = $A.text_build(5)
-  val b = $A.text_putc(b, 0, 105) val b = $A.text_putc(b, 1, 110) val b = $A.text_putc(b, 2, 112) val b = $A.text_putc(b, 3, 117) val b = $A.text_putc(b, 4, 116)
-in $A.text_done(b) end
+fn _tag_div(): $A.text(3) =
+  $A.text_of_chars(3, @[char][3]('d', 'i', 'v'))
+fn _tag_span(): $A.text(4) =
+  $A.text_of_chars(4, @[char][4]('s', 'p', 'a', 'n'))
+fn _tag_p(): $A.text(1) =
+  $A.text_of_chars(1, @[char][1]('p'))
+fn _tag_br(): $A.text(2) =
+  $A.text_of_chars(2, @[char][2]('b', 'r'))
+fn _tag_hr(): $A.text(2) =
+  $A.text_of_chars(2, @[char][2]('h', 'r'))
+fn _tag_ul(): $A.text(2) =
+  $A.text_of_chars(2, @[char][2]('u', 'l'))
+fn _tag_li(): $A.text(2) =
+  $A.text_of_chars(2, @[char][2]('l', 'i'))
+fn _tag_a(): $A.text(1) =
+  $A.text_of_chars(1, @[char][1]('a'))
+fn _tag_img(): $A.text(3) =
+  $A.text_of_chars(3, @[char][3]('i', 'm', 'g'))
+fn _tag_input(): $A.text(5) =
+  $A.text_of_chars(5, @[char][5]('i', 'n', 'p', 'u', 't'))
 
 (* Fallback for any tag: use "div" *)
 fn _tag_default(): $A.text(3) = _tag_div()
