@@ -1,7 +1,7 @@
 [package]
 name = "wasm.bats-packages.dev/dom"
 kind = "lib"
-unsafe = true
+unsafe = false
 
 [dependencies]
 "wasm.bats-packages.dev/bridge" = ""
