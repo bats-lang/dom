@@ -2,3 +2,11 @@
 name = "wasm.bats-packages.dev/dom"
 kind = "lib"
 unsafe = true
+
+[dependencies]
+"wasm.bats-packages.dev/bridge" = ""
+"array" = ""
+"arith" = ""
+"builder" = ""
+"css" = ""
+"widget" = ""
