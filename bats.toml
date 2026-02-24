@@ -9,4 +9,5 @@ unsafe = false
 "arith" = ""
 "builder" = ""
 "css" = ""
+"str" = ""
 "widget" = ""
