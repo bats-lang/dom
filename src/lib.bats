@@ -15,7 +15,12 @@
    Document: owns mount point, CSS rules, node ID counter
    ============================================================ *)
 
-#pub absvtype document(l:addr)
+#pub datavtype document(l:addr) =
+  | {l:agz} doc_mk(l) of (
+      $A.arr(byte, l, 262144),
+      int,
+      int
+    )
 
 (* ============================================================
    Public API
@@ -102,15 +107,6 @@ fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
    ============================================================ *)
 
 local
-
-datavtype doc_vt(l:addr) =
-  | {l:agz} doc_mk(l) of (
-      $A.arr(byte, l, DOM_BUF_CAP),
-      int,   (* cursor *)
-      int    (* next node ID *)
-    )
-
-assume document(l) = doc_vt(l)
 
 in
 
