@@ -121,7 +121,7 @@ fn _auto_flush
   : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
   val+ @doc_mk(buf, cursor, _) = doc
   val c0 = cursor
-  val c1 = g1ofg0(c0)
+  val c1 = $AR.checked_idx(c0, 262144)
 in
   if c1 + needed > 262144 then let
     val () = _flush_arr(buf, c0)
@@ -158,7 +158,7 @@ fn _emit_create_element
   val () = $A.write_i32(buf, c + 5, parent_id)
   val () = $A.write_byte(buf, c + 9, tag_len)
   val () = $A.write_text(buf, c + 10, tag, tag_len)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -174,7 +174,7 @@ fn _emit_set_text
   val () = $A.write_i32(buf, c + 1, node_id)
   val () = $A.write_u16le(buf, c + 5, text_len)
   val () = $A.write_text(buf, c + 7, text, text_len)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -194,7 +194,7 @@ fn _emit_set_attr
   val off = c + 6 + name_len
   val () = $A.write_u16le(buf, off, value_len)
   val () = $A.write_text(buf, off + 2, value, value_len)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -212,7 +212,7 @@ fn _emit_set_attr_empty
   val () = $A.write_text(buf, c + 6, attr_name, name_len)
   val off = c + 6 + name_len
   val () = $A.write_u16le(buf, off, 0)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -224,7 +224,7 @@ fn _emit_remove_children
   val+ @doc_mk(buf, cursor, _) = doc
   val () = $A.write_byte(buf, c, 3)
   val () = $A.write_i32(buf, c + 1, node_id)
-  val () = cursor := g0ofg1(c + 5)
+  val () = cursor := c + 5
   prval () = fold@(doc)
 in end
 
@@ -236,7 +236,7 @@ fn _emit_remove_child
   val+ @doc_mk(buf, cursor, _) = doc
   val () = $A.write_byte(buf, c, 5)
   val () = $A.write_i32(buf, c + 1, node_id)
-  val () = cursor := g0ofg1(c + 5)
+  val () = cursor := c + 5
   prval () = fold@(doc)
 in end
 
