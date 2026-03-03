@@ -368,9 +368,10 @@ in @($A.text_done(b), 1) end
 
 (* Emit a widget tree recursively *)
 fun _emit_widget
-  {l:agz}
-  (doc: !doc_vt(l), parent_id: int, w: $W.widget): void =
-  case+ w of
+  {l:agz}{fuel:nat} .<fuel, 1>.
+  (doc: !doc_vt(l), parent_id: int, w: $W.widget, fuel: int fuel): void =
+  if fuel <= 0 then ()
+  else case+ w of
   | $W.Text(s) => () (* Text nodes: would need content_text emit *)
   | $W.Element($W.ElementNode(wid, top, cls, hidden, tabidx, wtitle, children)) => let
       val nid = _next_id(doc)
@@ -392,17 +393,18 @@ fun _emit_widget
         | $W.SomeStr(_) => () (* would need content_text handling *)
         | $W.NoneStr() => ())
       (* Recurse into children *)
-      val () = _emit_children(doc, nid, children)
+      val () = _emit_children(doc, nid, children, fuel - 1)
     in end
 
 and _emit_children
-  {l:agz}
-  (doc: !doc_vt(l), parent_id: int, children: $W.widget_list): void =
-  case+ children of
+  {l:agz}{fuel:nat} .<fuel, 0>.
+  (doc: !doc_vt(l), parent_id: int, children: $W.widget_list, fuel: int fuel): void =
+  if fuel <= 0 then ()
+  else case+ children of
   | $W.WNil() => ()
   | $W.WCons(child, rest) => let
-      val () = _emit_widget(doc, parent_id, child)
-    in _emit_children(doc, parent_id, rest) end
+      val () = _emit_widget(doc, parent_id, child, fuel - 1)
+    in _emit_children(doc, parent_id, rest, fuel - 1) end
 
 (* ============================================================
    Implementations
@@ -422,7 +424,7 @@ implement apply{l}(doc, d) = let
   | $W.RemoveAllChildren(wid) =>
       _emit_remove_children(doc, _resolve_id(wid))
   | $W.AddChild(parent_wid, child) =>
-      _emit_widget(doc, _resolve_id(parent_wid), child)
+      _emit_widget(doc, _resolve_id(parent_wid), child, 4096)
   | $W.RemoveChild(_, child_wid) =>
       _emit_remove_child(doc, _resolve_id(child_wid))
   | $W.SetHidden(wid, h) => let
