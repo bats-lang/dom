@@ -368,9 +368,10 @@ in @($A.text_done(b), 1) end
 
 (* Emit a widget tree recursively *)
 fun _emit_widget
-  {l:agz}
-  (doc: !doc_vt(l), parent_id: int, w: $W.widget): void =
-  case+ w of
+  {l:agz}{fuel:nat} .<fuel, 1>.
+  (doc: !doc_vt(l), parent_id: int, w: $W.widget, fuel: int fuel): void =
+  if fuel <= 0 then ()
+  else case+ w of
   | $W.Text(s) => () (* Text nodes: would need content_text emit *)
   | $W.Element($W.ElementNode(wid, top, cls, hidden, tabidx, wtitle, children)) => let
       val nid = _next_id(doc)
@@ -392,17 +393,18 @@ fun _emit_widget
         | $W.SomeStr(_) => () (* would need content_text handling *)
         | $W.NoneStr() => ())
       (* Recurse into children *)
-      val () = _emit_children(doc, nid, children)
+      val () = _emit_children(doc, nid, children, fuel - 1)
     in end
 
 and _emit_children
-  {l:agz}
-  (doc: !doc_vt(l), parent_id: int, children: $W.widget_list): void =
-  case+ children of
+  {l:agz}{fuel:nat} .<fuel, 0>.
+  (doc: !doc_vt(l), parent_id: int, children: $W.widget_list, fuel: int fuel): void =
+  if fuel <= 0 then ()
+  else case+ children of
   | $W.WNil() => ()
   | $W.WCons(child, rest) => let
-      val () = _emit_widget(doc, parent_id, child)
-    in _emit_children(doc, parent_id, rest) end
+      val () = _emit_widget(doc, parent_id, child, fuel - 1)
+    in _emit_children(doc, parent_id, rest, fuel - 1) end
 
 (* ============================================================
    Implementations
@@ -422,7 +424,7 @@ implement apply{l}(doc, d) = let
   | $W.RemoveAllChildren(wid) =>
       _emit_remove_children(doc, _resolve_id(wid))
   | $W.AddChild(parent_wid, child) =>
-      _emit_widget(doc, _resolve_id(parent_wid), child)
+      _emit_widget(doc, _resolve_id(parent_wid), child, 4096)
   | $W.RemoveChild(_, child_wid) =>
       _emit_remove_child(doc, _resolve_id(child_wid))
   | $W.SetHidden(wid, h) => let
@@ -459,9 +461,9 @@ in $A.free<byte>(buf) end
 fn _write_canvas_id
   {l:agz}{cap:int}{li:agz}{ni:pos}
   (buf: !$A.arr(byte, l, cap), c: int,
-   op: int,
+   opc: int,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni): int = let
-  val () = $A.write_byte(buf, c, op)
+  val () = $A.write_byte(buf, c, opc)
   val () = $A.write_u16le(buf, c + 1, id_len)
   val () = $A.write_borrow(buf, c + 3, node_id, id_len)
 in c + 3 + id_len end
@@ -469,12 +471,12 @@ in c + 3 + id_len end
 (* Helper: emit opcode + string node_id (3 + ni bytes) *)
 fn _emit_canvas_str_op
   {l:agz}{li:agz}{ni:pos | ni + 3 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), op: int,
+  (doc: !doc_vt(l), opc: int,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni): void = let
   val op_size = 3 + id_len
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _) = doc
-  val _ = _write_canvas_id(buf, c, op, node_id, id_len)
+  val _ = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -482,13 +484,13 @@ in end
 (* Helper: emit opcode + string node_id + 1 i32 (7 + ni bytes) *)
 fn _emit_canvas_str_op_i32
   {l:agz}{li:agz}{ni:pos | ni + 7 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), op: int,
+  (doc: !doc_vt(l), opc: int,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    v0: int): void = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _) = doc
-  val off = _write_canvas_id(buf, c, op, node_id, id_len)
+  val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = $A.write_i32(buf, off, v0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
@@ -497,13 +499,13 @@ in end
 (* Helper: emit opcode + string node_id + 2 i32 (11 + ni bytes) *)
 fn _emit_canvas_str_op_2i32
   {l:agz}{li:agz}{ni:pos | ni + 11 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), op: int,
+  (doc: !doc_vt(l), opc: int,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    v0: int, v1: int): void = let
   val op_size = 11 + id_len
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _) = doc
-  val off = _write_canvas_id(buf, c, op, node_id, id_len)
+  val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = $A.write_i32(buf, off, v0)
   val () = $A.write_i32(buf, off + 4, v1)
   val () = cursor := g0ofg1(c + op_size)
@@ -513,13 +515,13 @@ in end
 (* Helper: emit opcode + string node_id + 4 i32 (19 + ni bytes) *)
 fn _emit_canvas_str_op_4i32
   {l:agz}{li:agz}{ni:pos | ni + 19 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), op: int,
+  (doc: !doc_vt(l), opc: int,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    v0: int, v1: int, v2: int, v3: int): void = let
   val op_size = 19 + id_len
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _) = doc
-  val off = _write_canvas_id(buf, c, op, node_id, id_len)
+  val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = $A.write_i32(buf, off, v0)
   val () = $A.write_i32(buf, off + 4, v1)
   val () = $A.write_i32(buf, off + 8, v2)
