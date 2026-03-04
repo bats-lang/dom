@@ -9,6 +9,7 @@
 #use str as S
 #use widget as W
 #use wasm.bats-packages.dev/bridge as B
+staload "wasm.bats-packages.dev/bridge/src/dom.bats"
 
 #pub stadef DOM_BUF_CAP = 262144
 
@@ -22,6 +23,8 @@
       int,
       int
     )
+
+vtypedef doc_vt(l:addr) = document(l)
 
 (* ============================================================
    Public API
