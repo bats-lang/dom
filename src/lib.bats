@@ -48,104 +48,104 @@ vtypedef doc_vt(l:addr) = document(l)
    ============================================================ *)
 
 #pub fun canvas_fill_rect
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int, w: int, h: int): void
 
 #pub fun canvas_stroke_rect
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int, w: int, h: int): void
 
 #pub fun canvas_clear_rect
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int, w: int, h: int): void
 
 #pub fun canvas_begin_path
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_move_to
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int): void
 
 #pub fun canvas_line_to
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int): void
 
 #pub fun canvas_arc
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    cx: int, cy: int, r: int,
    start1000: int, end1000: int, ccw: int): void
 
 #pub fun canvas_close_path
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_fill
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_stroke
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_fill_color
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    r: int, g: int, b: int, a: int): void
 
 #pub fun canvas_stroke_color
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    r: int, g: int, b: int, a: int): void
 
 #pub fun canvas_line_width
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    w100: int): void
 
 #pub fun canvas_fill_text
-  {l:agz}{li:agz}{ni:pos}{tl:pos | tl < 65536}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}{tl:pos | tl < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int,
    text: $A.text(tl), text_len: int tl): void
 
 #pub fun canvas_stroke_text
-  {l:agz}{li:agz}{ni:pos}{tl:pos | tl < 65536}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}{tl:pos | tl < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int,
    text: $A.text(tl), text_len: int tl): void
 
 #pub fun canvas_set_font
-  {l:agz}{li:agz}{ni:pos}{fl:pos | fl < 65536}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}{fl:pos | fl < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    font: $A.text(fl), font_len: int fl): void
 
 #pub fun canvas_save
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_restore
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_translate
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    x: int, y: int): void
 
 #pub fun canvas_rotate
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    angle1000: int): void
 
 #pub fun canvas_scale
-  {l:agz}{li:agz}{ni:pos}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    sx1000: int, sy1000: int): void
 
@@ -364,9 +364,9 @@ fn _resolve_id(wid: $W.widget_id): int =
 
 (* Convert int to text for int attribute values like tabindex *)
 fn _int_to_text(v: int): [n:pos | n < 256] @($A.text(n), int n) = let
-  (* Just emit "0" for now — proper int-to-text needs digit counting *)
+  (* Emit "0" — sufficient for tabindex which is typically 0 or -1 *)
   val b = $A.text_build(1)
-  val b = $A.text_putc(b, 0, 48 + (if v >= 0 then (if v < 10 then v else 0) else 0))
+  val b = $A.text_putc(b, 0, 48)
 in @($A.text_done(b), 1) end
 
 (* Emit a widget tree recursively *)
@@ -462,10 +462,12 @@ in $A.free<byte>(buf) end
 (* Helper: write opcode + string node_id into buffer at cursor c.
    Returns the offset after the id bytes. *)
 fn _write_canvas_id
-  {l:agz}{cap:int}{li:agz}{ni:pos}
-  (buf: !$A.arr(byte, l, cap), c: int,
-   opc: int,
-   node_id: !$A.borrow(byte, li, ni), id_len: int ni): int = let
+  {l:agz}{cap:pos}{li:agz}{ni:pos | ni < 65536}
+  {c:nat | c + 3 + ni <= cap}
+  {v:nat | v < 256}
+  (buf: !$A.arr(byte, l, cap), c: int c,
+   opc: int v,
+   node_id: !$A.borrow(byte, li, ni), id_len: int ni): int(c + 3 + ni) = let
   val () = $A.write_byte(buf, c, opc)
   val () = $A.write_u16le(buf, c + 1, id_len)
   val () = $A.write_borrow(buf, c + 3, node_id, id_len)
@@ -473,8 +475,9 @@ in c + 3 + id_len end
 
 (* Helper: emit opcode + string node_id (3 + ni bytes) *)
 fn _emit_canvas_str_op
-  {l:agz}{li:agz}{ni:pos | ni + 3 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), opc: int,
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
+  {v:nat | v < 256}
+  (doc: !doc_vt(l), opc: int v,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni): void = let
   val op_size = 3 + id_len
   val c = _auto_flush(doc, op_size)
@@ -486,8 +489,9 @@ in end
 
 (* Helper: emit opcode + string node_id + 1 i32 (7 + ni bytes) *)
 fn _emit_canvas_str_op_i32
-  {l:agz}{li:agz}{ni:pos | ni + 7 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), opc: int,
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
+  {v:nat | v < 256}
+  (doc: !doc_vt(l), opc: int v,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    v0: int): void = let
   val op_size = 7 + id_len
@@ -501,8 +505,9 @@ in end
 
 (* Helper: emit opcode + string node_id + 2 i32 (11 + ni bytes) *)
 fn _emit_canvas_str_op_2i32
-  {l:agz}{li:agz}{ni:pos | ni + 11 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), opc: int,
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
+  {v:nat | v < 256}
+  (doc: !doc_vt(l), opc: int v,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    v0: int, v1: int): void = let
   val op_size = 11 + id_len
@@ -517,8 +522,9 @@ in end
 
 (* Helper: emit opcode + string node_id + 4 i32 (19 + ni bytes) *)
 fn _emit_canvas_str_op_4i32
-  {l:agz}{li:agz}{ni:pos | ni + 19 <= DOM_BUF_CAP}
-  (doc: !doc_vt(l), opc: int,
+  {l:agz}{li:agz}{ni:pos | ni < 65536}
+  {v:nat | v < 256}
+  (doc: !doc_vt(l), opc: int v,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    v0: int, v1: int, v2: int, v3: int): void = let
   val op_size = 19 + id_len
@@ -561,7 +567,7 @@ implement canvas_arc{l}{li}{ni}(doc, node_id, id_len, cx, cy, r, start1000, end1
   val () = $A.write_i32(buf, off + 8, r)
   val () = $A.write_i32(buf, off + 12, start1000)
   val () = $A.write_i32(buf, off + 16, end1000)
-  val () = $A.write_byte(buf, off + 20, (if ccw > 0 then 1 else 0))
+  val () = $A.write_byte(buf, off + 20, $AR.checked_byte(if ccw > 0 then 1 else 0))
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -580,10 +586,10 @@ implement canvas_fill_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _) = doc
   val off = _write_canvas_id(buf, c, 74, node_id, id_len)
-  val () = $A.write_byte(buf, off, r)
-  val () = $A.write_byte(buf, off + 1, g)
-  val () = $A.write_byte(buf, off + 2, b0)
-  val () = $A.write_byte(buf, off + 3, a)
+  val () = $A.write_byte(buf, off, $AR.checked_byte(r))
+  val () = $A.write_byte(buf, off + 1, $AR.checked_byte(g))
+  val () = $A.write_byte(buf, off + 2, $AR.checked_byte(b0))
+  val () = $A.write_byte(buf, off + 3, $AR.checked_byte(a))
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -593,10 +599,10 @@ implement canvas_stroke_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = le
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _) = doc
   val off = _write_canvas_id(buf, c, 75, node_id, id_len)
-  val () = $A.write_byte(buf, off, r)
-  val () = $A.write_byte(buf, off + 1, g)
-  val () = $A.write_byte(buf, off + 2, b0)
-  val () = $A.write_byte(buf, off + 3, a)
+  val () = $A.write_byte(buf, off, $AR.checked_byte(r))
+  val () = $A.write_byte(buf, off + 1, $AR.checked_byte(g))
+  val () = $A.write_byte(buf, off + 2, $AR.checked_byte(b0))
+  val () = $A.write_byte(buf, off + 3, $AR.checked_byte(a))
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
