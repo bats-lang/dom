@@ -155,39 +155,39 @@ vtypedef doc_vt(l:addr) = document(l)
 
 (* Attribute names *)
 fn _txt_hidden(): $A.text(6) =
-  $S.text_of_chars(@[char][6]('h', 'i', 'd', 'd', 'e', 'n'), 6)
+  let var c = @[char][6]('h', 'i', 'd', 'd', 'e', 'n') in $S.text_of_chars(c, 6) end
 fn _txt_class(): $A.text(5) =
-  $S.text_of_chars(@[char][5]('c', 'l', 'a', 's', 's'), 5)
+  let var c = @[char][5]('c', 'l', 'a', 's', 's') in $S.text_of_chars(c, 5) end
 fn _txt_tabindex(): $A.text(8) =
-  $S.text_of_chars(@[char][8]('t', 'a', 'b', 'i', 'n', 'd', 'e', 'x'), 8)
+  let var c = @[char][8]('t', 'a', 'b', 'i', 'n', 'd', 'e', 'x') in $S.text_of_chars(c, 8) end
 fn _txt_title(): $A.text(5) =
-  $S.text_of_chars(@[char][5]('t', 'i', 't', 'l', 'e'), 5)
+  let var c = @[char][5]('t', 'i', 't', 'l', 'e') in $S.text_of_chars(c, 5) end
 fn _txt_id(): $A.text(2) =
-  $S.text_of_chars(@[char][2]('i', 'd'), 2)
+  let var c = @[char][2]('i', 'd') in $S.text_of_chars(c, 2) end
 fn _txt_style(): $A.text(5) =
-  $S.text_of_chars(@[char][5]('s', 't', 'y', 'l', 'e'), 5)
+  let var c = @[char][5]('s', 't', 'y', 'l', 'e') in $S.text_of_chars(c, 5) end
 
 (* Tag names for html_normal *)
 fn _tag_div(): $A.text(3) =
-  $S.text_of_chars(@[char][3]('d', 'i', 'v'), 3)
+  let var c = @[char][3]('d', 'i', 'v') in $S.text_of_chars(c, 3) end
 fn _tag_span(): $A.text(4) =
-  $S.text_of_chars(@[char][4]('s', 'p', 'a', 'n'), 4)
+  let var c = @[char][4]('s', 'p', 'a', 'n') in $S.text_of_chars(c, 4) end
 fn _tag_p(): $A.text(1) =
-  $S.text_of_chars(@[char][1]('p'), 1)
+  let var c = @[char][1]('p') in $S.text_of_chars(c, 1) end
 fn _tag_br(): $A.text(2) =
-  $S.text_of_chars(@[char][2]('b', 'r'), 2)
+  let var c = @[char][2]('b', 'r') in $S.text_of_chars(c, 2) end
 fn _tag_hr(): $A.text(2) =
-  $S.text_of_chars(@[char][2]('h', 'r'), 2)
+  let var c = @[char][2]('h', 'r') in $S.text_of_chars(c, 2) end
 fn _tag_ul(): $A.text(2) =
-  $S.text_of_chars(@[char][2]('u', 'l'), 2)
+  let var c = @[char][2]('u', 'l') in $S.text_of_chars(c, 2) end
 fn _tag_li(): $A.text(2) =
-  $S.text_of_chars(@[char][2]('l', 'i'), 2)
+  let var c = @[char][2]('l', 'i') in $S.text_of_chars(c, 2) end
 fn _tag_a(): $A.text(1) =
-  $S.text_of_chars(@[char][1]('a'), 1)
+  let var c = @[char][1]('a') in $S.text_of_chars(c, 1) end
 fn _tag_img(): $A.text(3) =
-  $S.text_of_chars(@[char][3]('i', 'm', 'g'), 3)
+  let var c = @[char][3]('i', 'm', 'g') in $S.text_of_chars(c, 3) end
 fn _tag_input(): $A.text(5) =
-  $S.text_of_chars(@[char][5]('i', 'n', 'p', 'u', 't'), 5)
+  let var c = @[char][5]('i', 'n', 'p', 'u', 't') in $S.text_of_chars(c, 5) end
 
 (* Fallback for any tag: use "div" *)
 fn _tag_default(): $A.text(3) = _tag_div()
