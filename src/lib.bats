@@ -222,7 +222,7 @@ in
 
 fn _flush_arr{l:agz}
   (buf: !$A.arr(byte, l, DOM_BUF_CAP), len: int): void =
-  $B.dom_flush(buf, len)
+  dom_flush(buf, len)
 
 fn _auto_flush
   {l:agz}{needed:pos | needed <= DOM_BUF_CAP}
