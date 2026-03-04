@@ -233,7 +233,7 @@ fn _auto_flush
   val c1 = $AR.checked_idx(c0, 262144)
 in
   if c1 + needed > 262144 then let
-    val () = _flush_arr(buf, c0)
+    val () = _flush_arr(buf, $AR.checked_idx(c0, 262144))
     val () = cursor := 0
     prval () = fold@(doc)
   in 0 end
@@ -241,7 +241,7 @@ in
     prval () = fold@(doc)
   in c1 end
   else let
-    val () = _flush_arr(buf, c0)
+    val () = _flush_arr(buf, $AR.checked_idx(c0, 262144))
     val () = cursor := 0
     prval () = fold@(doc)
   in 0 end
@@ -352,7 +352,7 @@ in end
 fn _flush{l:agz}(doc: !doc_vt(l)): void = let
   val+ @doc_mk(buf, cursor, _) = doc
   val c = cursor
-  val () = if c > 0 then _flush_arr(buf, c)
+  val () = if c > 0 then _flush_arr(buf, $AR.checked_idx(c, 262144))
   val () = cursor := 0
   prval () = fold@(doc)
 in end
