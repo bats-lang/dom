@@ -220,8 +220,8 @@ local
 
 in
 
-fn _flush_arr{l:agz}
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), len: int): void =
+fn _flush_arr{l:agz}{m:nat | m <= DOM_BUF_CAP}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), len: int m): void =
   dom_flush(buf, len)
 
 fn _auto_flush
