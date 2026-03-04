@@ -31,7 +31,7 @@ vtypedef doc_vt(l:addr) = document(l)
    ============================================================ *)
 
 #pub fun create_document
-  {nt:pos}{ni:pos}
+  {nt:pos | nt < 65536}{ni:pos | ni < 65536}
   (mount_tag: $A.text(nt), tag_len: int nt,
    mount_id: $A.text(ni), id_len: int ni): [l:agz] document(l)
 
