@@ -261,13 +261,6 @@ in
   in c0 end
 end
 
-fn _next_id{l:agz}(doc: !doc_vt(l)): int = let
-  val+ @doc_mk(_, _, nid, _, _) = doc
-  val id = nid
-  val () = nid := nid + 1
-  prval () = fold@(doc)
-in id end
-
 (* ---- Node ID helpers ----
    Bridge JS wire format: [u16le str_len][string bytes]
    Root (id <= 0): uses mount_id
@@ -308,7 +301,26 @@ fn _write_nid{l:agz}{nm:pos | nm < 256}
     val () = _write_digits_loop(buf, off + 3, node_id, dc - 1, $AR.checked_nat(dc + 1))
   in off + 2 + slen end
 
-(* ---- DOM opcodes with string node IDs ---- *)
+(* ---- Widget ID helpers ----
+   Root: uses mount_id (same as nid=0)
+   Generated(text, len): writes text directly as the wire string *)
+
+fn _wid_str_len(wid: $W.widget_id, mid_len: int): int =
+  case+ wid of
+  | $W.Root() => mid_len
+  | $W.Generated(_, tlen) => tlen
+
+fn _write_wid{l:agz}{nm:pos | nm < 256}
+  (buf: !$A.arr(byte, l, 262144), off: int,
+   wid: $W.widget_id, mid: $A.text(nm), mid_len: int nm): int =
+  case+ wid of
+  | $W.Root() => _write_nid(buf, off, 0, mid, mid_len)
+  | $W.Generated(text, tlen) => let
+      val () = $A.write_u16le(buf, $AR.checked_idx(off, 262143), tlen)
+      val () = $A.write_text(buf, $AR.checked_idx(off + 2, 261889), text, tlen)
+    in off + 2 + tlen end
+
+(* ---- DOM opcodes with int node IDs (used by create_document) ---- *)
 
 (* Opcode 4: create_element
    Wire: [4][nid:str][pid:str][tag_len:u8][tag_bytes] *)
@@ -332,28 +344,7 @@ fn _emit_create_element
   prval () = fold@(doc)
 in end
 
-(* Opcode 1: set_text with $A.text
-   Wire: [1][nid:str][text_len:u16le][text_bytes] *)
-fn _emit_set_text
-  {l:agz}{tl:pos | tl < 65536}
-  (doc: !doc_vt(l), node_id: int,
-   text: $A.text(tl), text_len: int tl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _nid_str_len(node_id, midl)
-  val op_size = 1 + (2 + nslen) + 2 + text_len
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 1)
-  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
-  val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262143), text_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, 196609), text, text_len)
-  val () = cursor := c + op_size
-  prval () = fold@(doc)
-in end
-
-(* Opcode 2: set_attr
-   Wire: [2][nid:str][name_len:u8][name_bytes][val_len:u16le][val_bytes] *)
+(* Opcode 2: set_attr with int node ID *)
 fn _emit_set_attr
   {l:agz}{nl:pos | nl < 256}{vl:pos | vl < 65536}
   (doc: !doc_vt(l), node_id: int,
@@ -376,57 +367,78 @@ fn _emit_set_attr
   prval () = fold@(doc)
 in end
 
-(* Opcode 2: set_attr with empty value (boolean attr) *)
-fn _emit_set_attr_empty
-  {l:agz}{nl:pos | nl < 256}
-  (doc: !doc_vt(l), node_id: int,
-   attr_name: $A.text(nl), name_len: int nl): void = let
+(* ---- DOM opcodes with widget_id ---- *)
+
+(* Opcode 4: create_element with widget_id for node and parent *)
+fn _emit_create_wid
+  {l:agz}{tl:pos | tl < 256}
+  (doc: !doc_vt(l), node_wid: $W.widget_id, parent_wid: $W.widget_id,
+   tag: $A.text(tl), tag_len: int tl): void = let
   val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _nid_str_len(node_id, midl)
-  val op_size = 1 + (2 + nslen) + 1 + name_len + 2
+  val nslen = _wid_str_len(node_wid, midl)
+  val pslen = _wid_str_len(parent_wid, midl)
+  val op_size = 1 + (2 + nslen) + (2 + pslen) + 1 + tag_len
   prval () = fold@(doc)
   val c = _auto_flush_dyn(doc, op_size)
   val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
-  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 261889), attr_name, name_len)
-  val off2 = off1 + 1 + name_len
-  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262143), 0)
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 4)
+  val off1 = _write_wid(buf, c + 1, node_wid, mid2, midl2)
+  val off2 = _write_wid(buf, off1, parent_wid, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off2, 262144), tag_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off2 + 1, 261889), tag, tag_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 3: remove_children
-   Wire: [3][nid:str] *)
-fn _emit_remove_children
+(* Opcode 3: remove_children with widget_id *)
+fn _emit_remove_children_wid
   {l:agz}
-  (doc: !doc_vt(l), node_id: int): void = let
+  (doc: !doc_vt(l), wid: $W.widget_id): void = let
   val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _nid_str_len(node_id, midl)
+  val nslen = _wid_str_len(wid, midl)
   val op_size = 1 + 2 + nslen
   prval () = fold@(doc)
   val c = _auto_flush_dyn(doc, op_size)
   val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
   val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 3)
-  val _ = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val _ = _write_wid(buf, c + 1, wid, mid2, midl2)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 5: remove_child
-   Wire: [5][nid:str] *)
-fn _emit_remove_child
+(* Opcode 5: remove_child with widget_id *)
+fn _emit_remove_child_wid
   {l:agz}
-  (doc: !doc_vt(l), node_id: int): void = let
+  (doc: !doc_vt(l), wid: $W.widget_id): void = let
   val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _nid_str_len(node_id, midl)
+  val nslen = _wid_str_len(wid, midl)
   val op_size = 1 + 2 + nslen
   prval () = fold@(doc)
   val c = _auto_flush_dyn(doc, op_size)
   val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
   val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 5)
-  val _ = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val _ = _write_wid(buf, c + 1, wid, mid2, midl2)
+  val () = cursor := c + op_size
+  prval () = fold@(doc)
+in end
+
+(* Opcode 2: set_attr with empty value (boolean attr), widget_id *)
+fn _emit_set_attr_empty_wid
+  {l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id,
+   attr_name: $A.text(nl), name_len: int nl): void = let
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _wid_str_len(wid, midl)
+  val op_size = 1 + (2 + nslen) + 1 + name_len + 2
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
+  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 261889), attr_name, name_len)
+  val off2 = off1 + 1 + name_len
+  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262143), 0)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
@@ -438,17 +450,6 @@ fn _flush{l:agz}(doc: !doc_vt(l)): void = let
   val () = cursor := 0
   prval () = fold@(doc)
 in end
-
-fn _resolve_id(wid: $W.widget_id): int =
-  case+ wid of
-  | $W.Root() => 0
-  | $W.Generated(_, _) => ~1
-
-(* Convert int to text for int attribute values like tabindex *)
-fn _int_to_text(v: int): [n:pos | n < 256] @($A.text(n), int n) = let
-  val b = $A.text_build(1)
-  val b = $A.text_putc(b, 0, 48)
-in @($A.text_done(b), 1) end
 
 (* ---- Text node emission from string ---- *)
 
@@ -462,9 +463,9 @@ fun _write_str_bytes{l:agz}{sn:nat}{i:nat | i <= sn}{fuel:nat} .<fuel>.
     val () = $A.write_byte(buf, $AR.checked_idx(off + i, 262144), $AR.checked_byte(c))
   in _write_str_bytes(buf, off, s, slen, i + 1, fuel - 1) end
 
-(* Emit SET_ATTR with a string value *)
-fn _emit_set_attr_str{l:agz}{nl:pos | nl < 256}
-  (doc: !doc_vt(l), node_id: int,
+(* Opcode 2: SET_ATTR with string value, widget_id target *)
+fn _emit_set_attr_str_wid{l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl,
    s: string): void = let
   val s1 = g1ofg0(s)
@@ -474,13 +475,13 @@ in
   else if slen >= 65536 then ()
   else let
     val+ @doc_mk(_, _, _, mid, midl) = doc
-    val nslen = _nid_str_len(node_id, midl)
+    val nslen = _wid_str_len(wid, midl)
     val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + slen
     prval () = fold@(doc)
     val c = _auto_flush_dyn(doc, op_size)
     val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
     val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
-    val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+    val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
     val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
     val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 261889), attr_name, name_len)
     val off2 = off1 + 1 + name_len
@@ -491,8 +492,9 @@ in
   in end
 end
 
-fn _emit_text_str{l:agz}
-  (doc: !doc_vt(l), node_id: int, s: string): void = let
+(* Opcode 1: SET_TEXT with string value, widget_id target *)
+fn _emit_set_text_wid{l:agz}
+  (doc: !doc_vt(l), wid: $W.widget_id, s: string): void = let
   val s1 = g1ofg0(s)
   val slen = g1u2i(string1_length(s1))
 in
@@ -500,13 +502,13 @@ in
   else if slen >= 65536 then ()
   else let
     val+ @doc_mk(_, _, _, mid, midl) = doc
-    val nslen = _nid_str_len(node_id, midl)
+    val nslen = _wid_str_len(wid, midl)
     val op_size = 1 + (2 + nslen) + 2 + slen
     prval () = fold@(doc)
     val c = _auto_flush_dyn(doc, op_size)
     val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
     val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 1)
-    val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+    val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
     val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262143), slen)
     val () = _write_str_bytes(buf, off1 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
     val () = cursor := c + op_size
@@ -514,20 +516,19 @@ in
   in end
 end
 
-(* Emit a widget *)
+(* Emit a widget using widget_id for wire IDs *)
 fn _emit_widget
   {l:agz}
-  (doc: !doc_vt(l), parent_id: int, w: $W.widget): void =
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget): void =
   case+ w of
-  | $W.Text(s) => _emit_text_str(doc, parent_id, s)
+  | $W.Text(s) => _emit_set_text_wid(doc, parent_wid, s)
   | $W.Element($W.ElementNode(wid, top, _, hidden, _, _, _)) => let
-      val nid = _next_id(doc)
       val @(tag, tlen) = (case+ top of
         | $W.Normal(n) => _normal_tag(n)
         | $W.Void(v) => _void_tag(v)
       ): [m:pos | m < 256] @($A.text(m), int m)
-      val () = _emit_create_element(doc, nid, parent_id, tag, tlen)
-      val () = (if hidden > 0 then _emit_set_attr_empty(doc, nid, _txt_hidden(), 6) else ())
+      val () = _emit_create_wid(doc, wid, parent_wid, tag, tlen)
+      val () = (if hidden > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6) else ())
     in end
 
 (* ============================================================
@@ -545,22 +546,19 @@ in doc end
 implement apply{l}(doc, d) = let
   val () = (case+ d of
   | $W.RemoveAllChildren(wid) =>
-      _emit_remove_children(doc, _resolve_id(wid))
+      _emit_remove_children_wid(doc, wid)
   | $W.AddChild(parent_wid, child) =>
-      _emit_widget(doc, _resolve_id(parent_wid), child)
+      _emit_widget(doc, parent_wid, child)
   | $W.RemoveChild(_, child_wid) =>
-      _emit_remove_child(doc, _resolve_id(child_wid))
-  | $W.SetHidden(wid, h) => let
-      val nid = _resolve_id(wid)
-    in
-      if h > 0 then _emit_set_attr_empty(doc, nid, _txt_hidden(), 6)
+      _emit_remove_child_wid(doc, child_wid)
+  | $W.SetHidden(wid, h) =>
+      if h > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
       else ()
-    end
   | $W.SetClass(wid, cls) => ()
   | $W.SetClassName(wid, cls) =>
-      _emit_set_attr_str(doc, _resolve_id(wid), _txt_class(), 5, cls)
+      _emit_set_attr_str_wid(doc, wid, _txt_class(), 5, cls)
   | $W.SetTextContent(wid, text) =>
-      _emit_text_str(doc, _resolve_id(wid), text)
+      _emit_set_text_wid(doc, wid, text)
   | $W.SetTabindex(_, _) => ()
   | $W.SetTitle(_, _) => ()
   | $W.SetAttribute(_, _) => ()
