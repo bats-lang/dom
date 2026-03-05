@@ -206,7 +206,7 @@ fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
   | $W.Br() => @(_tag_br(), 2)
   | $W.Hr() => @(_tag_hr(), 2)
   | $W.Img(_, _, _) => @(_tag_img(), 3)
-  | $W.HtmlInput(_, _, _) => @(_tag_input(), 5)
+  | $W.HtmlInput(_, _, _, _, _, _) => @(_tag_input(), 5)
   | _ => @(_tag_default(), 3)
 
 (* ============================================================
@@ -273,7 +273,7 @@ in id end
    Root (id <= 0): uses mount_id
    Generated (id > 0): "b" + decimal digits *)
 
-fn _digit_count(n: int): int =
+fn _digit_count(n: int): [m:int | 1 <= m; m <= 5] int m =
   if n < 10 then 1
   else if n < 100 then 2
   else if n < 1000 then 3
@@ -290,7 +290,7 @@ fun _write_digits_loop{l:agz}{fuel:nat} .<fuel>.
   else if pos < 0 then ()
   else let
     val d = n mod 10
-    val () = $A.write_byte(buf, $AR.checked_idx(off + pos, 262144), d + 48)
+    val () = $A.write_byte(buf, $AR.checked_idx(off + pos, 262144), $AR.checked_byte(d + 48))
   in _write_digits_loop(buf, off, n / 10, pos - 1, fuel - 1) end
 
 fn _write_nid{l:agz}{nm:pos | nm < 256}
