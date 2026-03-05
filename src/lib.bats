@@ -18,10 +18,12 @@ staload "wasm.bats-packages.dev/bridge/src/dom.bats"
    ============================================================ *)
 
 #pub datavtype document(l:addr) =
-  | {l:agz} doc_mk(l) of (
+  | {l:agz}{nm:pos | nm < 256} doc_mk(l) of (
       $A.arr(byte, l, 262144),
       int,
-      int
+      int,
+      $A.text(nm),
+      int nm
     )
 
 vtypedef doc_vt(l:addr) = document(l)
@@ -153,7 +155,6 @@ vtypedef doc_vt(l:addr) = document(l)
    Text constants: attribute and tag names (compile-time verified)
    ============================================================ *)
 
-(* Attribute names *)
 fn _txt_hidden(): $A.text(6) =
   let var c = @[char][6]('h', 'i', 'd', 'd', 'e', 'n') in $S.text_of_chars(c, 6) end
 fn _txt_class(): $A.text(5) =
@@ -167,7 +168,6 @@ fn _txt_id(): $A.text(2) =
 fn _txt_style(): $A.text(5) =
   let var c = @[char][5]('s', 't', 'y', 'l', 'e') in $S.text_of_chars(c, 5) end
 
-(* Tag names for html_normal *)
 fn _tag_div(): $A.text(3) =
   let var c = @[char][3]('d', 'i', 'v') in $S.text_of_chars(c, 3) end
 fn _tag_span(): $A.text(4) =
@@ -189,10 +189,8 @@ fn _tag_img(): $A.text(3) =
 fn _tag_input(): $A.text(5) =
   let var c = @[char][5]('i', 'n', 'p', 'u', 't') in $S.text_of_chars(c, 5) end
 
-(* Fallback for any tag: use "div" *)
 fn _tag_default(): $A.text(3) = _tag_div()
 
-(* Map html_normal to a tag name *)
 fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
   case+ n of
   | $W.Div() => @(_tag_div(), 3)
@@ -203,13 +201,12 @@ fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
   | $W.A(_, _) => @(_tag_a(), 1)
   | _ => @(_tag_default(), 3)
 
-(* Map html_void to a tag name *)
 fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
   case+ v of
   | $W.Br() => @(_tag_br(), 2)
   | $W.Hr() => @(_tag_hr(), 2)
   | $W.Img(_, _, _) => @(_tag_img(), 3)
-  | $W.HtmlInput(_, _, _, _, _, _) => @(_tag_input(), 5)
+  | $W.HtmlInput(_, _, _) => @(_tag_input(), 5)
   | _ => @(_tag_default(), 3)
 
 (* ============================================================
@@ -224,11 +221,12 @@ fn _flush_arr{l:agz}{m:nat | m <= DOM_BUF_CAP}
   (buf: !$A.arr(byte, l, DOM_BUF_CAP), len: int m): void =
   dom_flush(buf, len)
 
+(* Refined auto_flush for canvas ops with compile-time sizes *)
 fn _auto_flush
   {l:agz}{needed:pos | needed <= DOM_BUF_CAP}
   (doc: !doc_vt(l), needed: int needed)
   : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val c0 = cursor
   val c1 = $AR.checked_idx(c0, 262144)
 in
@@ -247,110 +245,194 @@ in
   in 0 end
 end
 
+(* Dynamic auto_flush for DOM ops with runtime-computed sizes *)
+fn _auto_flush_dyn{l:agz}
+  (doc: !doc_vt(l), needed: int): int = let
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val c0 = cursor
+in
+  if c0 + needed > 262144 then let
+    val () = if c0 > 0 then _flush_arr(buf, $AR.checked_idx(c0, 262144))
+    val () = cursor := 0
+    prval () = fold@(doc)
+  in 0 end
+  else let
+    prval () = fold@(doc)
+  in c0 end
+end
+
 fn _next_id{l:agz}(doc: !doc_vt(l)): int = let
-  val+ @doc_mk(_, _, nid) = doc
+  val+ @doc_mk(_, _, nid, _, _) = doc
   val id = nid
   val () = nid := nid + 1
   prval () = fold@(doc)
 in id end
 
-(* Opcode 4: create_element *)
+(* ---- Node ID helpers ----
+   Bridge JS wire format: [u16le str_len][string bytes]
+   Root (id <= 0): uses mount_id
+   Generated (id > 0): "b" + decimal digits *)
+
+fn _digit_count(n: int): int =
+  if n < 10 then 1
+  else if n < 100 then 2
+  else if n < 1000 then 3
+  else if n < 10000 then 4
+  else 5
+
+fn _nid_str_len(node_id: int, mid_len: int): int =
+  if node_id <= 0 then mid_len
+  else 1 + _digit_count(node_id)
+
+fun _write_digits_loop{l:agz}{fuel:nat} .<fuel>.
+  (buf: !$A.arr(byte, l, 262144), off: int, n: int, pos: int, fuel: int fuel): void =
+  if fuel <= 0 then ()
+  else if pos < 0 then ()
+  else let
+    val d = n mod 10
+    val () = $A.write_byte(buf, $AR.checked_idx(off + pos, 262144), d + 48)
+  in _write_digits_loop(buf, off, n / 10, pos - 1, fuel - 1) end
+
+fn _write_nid{l:agz}{nm:pos | nm < 256}
+  (buf: !$A.arr(byte, l, 262144), off: int,
+   node_id: int, mid: $A.text(nm), mid_len: int nm): int =
+  if node_id <= 0 then let
+    val () = $A.write_u16le(buf, $AR.checked_idx(off, 262144), mid_len)
+    val () = $A.write_text(buf, $AR.checked_idx(off + 2, 262144), mid, mid_len)
+  in off + 2 + mid_len end
+  else let
+    val dc = _digit_count(node_id)
+    val slen = 1 + dc
+    val () = $A.write_u16le(buf, $AR.checked_idx(off, 262144), slen)
+    val () = $A.write_byte(buf, $AR.checked_idx(off + 2, 262144), 98)
+    val () = _write_digits_loop(buf, off + 3, node_id, dc - 1, $AR.checked_nat(dc + 1))
+  in off + 2 + slen end
+
+(* ---- DOM opcodes with string node IDs ---- *)
+
+(* Opcode 4: create_element
+   Wire: [4][nid:str][pid:str][tag_len:u8][tag_bytes] *)
 fn _emit_create_element
-  {l:agz}{tl:pos | tl + 10 <= DOM_BUF_CAP; tl < 256}
+  {l:agz}{tl:pos | tl < 256}
   (doc: !doc_vt(l), node_id: int, parent_id: int,
    tag: $A.text(tl), tag_len: int tl): void = let
-  val op_size = 10 + tag_len
-  val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
-  val () = $A.write_byte(buf, c, 4)
-  val () = $A.write_i32(buf, c + 1, node_id)
-  val () = $A.write_i32(buf, c + 5, parent_id)
-  val () = $A.write_byte(buf, c + 9, tag_len)
-  val () = $A.write_text(buf, c + 10, tag, tag_len)
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _nid_str_len(node_id, midl)
+  val pslen = _nid_str_len(parent_id, midl)
+  val op_size = 1 + (2 + nslen) + (2 + pslen) + 1 + tag_len
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 4)
+  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val off2 = _write_nid(buf, off1, parent_id, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off2, 262144), tag_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off2 + 1, 262144), tag, tag_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 1: set_text *)
+(* Opcode 1: set_text with $A.text
+   Wire: [1][nid:str][text_len:u16le][text_bytes] *)
 fn _emit_set_text
-  {l:agz}{tl:pos | tl + 7 <= DOM_BUF_CAP; tl < 65536}
+  {l:agz}{tl:pos | tl < 65536}
   (doc: !doc_vt(l), node_id: int,
    text: $A.text(tl), text_len: int tl): void = let
-  val op_size = 7 + text_len
-  val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
-  val () = $A.write_byte(buf, c, 1)
-  val () = $A.write_i32(buf, c + 1, node_id)
-  val () = $A.write_u16le(buf, c + 5, text_len)
-  val () = $A.write_text(buf, c + 7, text, text_len)
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _nid_str_len(node_id, midl)
+  val op_size = 1 + (2 + nslen) + 2 + text_len
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 1)
+  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262144), text_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, 262144), text, text_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 2: set_attr with text name and text value *)
+(* Opcode 2: set_attr
+   Wire: [2][nid:str][name_len:u8][name_bytes][val_len:u16le][val_bytes] *)
 fn _emit_set_attr
-  {l:agz}{nl:pos | nl < 256}{vl:pos | nl + vl + 8 <= DOM_BUF_CAP; vl < 65536}
+  {l:agz}{nl:pos | nl < 256}{vl:pos | vl < 65536}
   (doc: !doc_vt(l), node_id: int,
    attr_name: $A.text(nl), name_len: int nl,
-   value: $A.text(vl), value_len: int vl): void = let
-  val op_size = 6 + name_len + 2 + value_len
-  val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
-  val () = $A.write_byte(buf, c, 2)
-  val () = $A.write_i32(buf, c + 1, node_id)
-  val () = $A.write_byte(buf, c + 5, name_len)
-  val () = $A.write_text(buf, c + 6, attr_name, name_len)
-  val off = c + 6 + name_len
-  val () = $A.write_u16le(buf, off, value_len)
-  val () = $A.write_text(buf, off + 2, value, value_len)
+   attr_value: $A.text(vl), value_len: int vl): void = let
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _nid_str_len(node_id, midl)
+  val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + value_len
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
+  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 262144), attr_name, name_len)
+  val off2 = off1 + 1 + name_len
+  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262144), value_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, 262144), attr_value, value_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 2: set_attr with text name and empty value (for boolean attrs) *)
+(* Opcode 2: set_attr with empty value (boolean attr) *)
 fn _emit_set_attr_empty
-  {l:agz}{nl:pos | nl + 8 <= DOM_BUF_CAP; nl < 256}
+  {l:agz}{nl:pos | nl < 256}
   (doc: !doc_vt(l), node_id: int,
    attr_name: $A.text(nl), name_len: int nl): void = let
-  val op_size = 6 + name_len + 2
-  val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
-  val () = $A.write_byte(buf, c, 2)
-  val () = $A.write_i32(buf, c + 1, node_id)
-  val () = $A.write_byte(buf, c + 5, name_len)
-  val () = $A.write_text(buf, c + 6, attr_name, name_len)
-  val off = c + 6 + name_len
-  val () = $A.write_u16le(buf, off, 0)
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _nid_str_len(node_id, midl)
+  val op_size = 1 + (2 + nslen) + 1 + name_len + 2
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
+  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 262144), attr_name, name_len)
+  val off2 = off1 + 1 + name_len
+  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262144), 0)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 3: remove_children *)
+(* Opcode 3: remove_children
+   Wire: [3][nid:str] *)
 fn _emit_remove_children
   {l:agz}
   (doc: !doc_vt(l), node_id: int): void = let
-  val c = _auto_flush{l}{5}(doc, 5)
-  val+ @doc_mk(buf, cursor, _) = doc
-  val () = $A.write_byte(buf, c, 3)
-  val () = $A.write_i32(buf, c + 1, node_id)
-  val () = cursor := c + 5
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _nid_str_len(node_id, midl)
+  val op_size = 1 + 2 + nslen
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 3)
+  val _ = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-(* Opcode 5: remove_child *)
+(* Opcode 5: remove_child
+   Wire: [5][nid:str] *)
 fn _emit_remove_child
   {l:agz}
   (doc: !doc_vt(l), node_id: int): void = let
-  val c = _auto_flush{l}{5}(doc, 5)
-  val+ @doc_mk(buf, cursor, _) = doc
-  val () = $A.write_byte(buf, c, 5)
-  val () = $A.write_i32(buf, c + 1, node_id)
-  val () = cursor := c + 5
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _nid_str_len(node_id, midl)
+  val op_size = 1 + 2 + nslen
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 5)
+  val _ = _write_nid(buf, c + 1, node_id, mid2, midl2)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
 fn _flush{l:agz}(doc: !doc_vt(l)): void = let
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val c = cursor
   val () = if c > 0 then _flush_arr(buf, $AR.checked_idx(c, 262144))
   val () = cursor := 0
@@ -364,50 +446,59 @@ fn _resolve_id(wid: $W.widget_id): int =
 
 (* Convert int to text for int attribute values like tabindex *)
 fn _int_to_text(v: int): [n:pos | n < 256] @($A.text(n), int n) = let
-  (* Emit "0" — sufficient for tabindex which is typically 0 or -1 *)
   val b = $A.text_build(1)
   val b = $A.text_putc(b, 0, 48)
 in @($A.text_done(b), 1) end
 
-(* Emit a widget tree recursively *)
-fun _emit_widget
-  {l:agz}{fuel:nat} .<fuel, 1>.
-  (doc: !doc_vt(l), parent_id: int, w: $W.widget, fuel: int fuel): void =
+(* ---- Text node emission from string ---- *)
+
+fun _write_str_bytes{l:agz}{sn:nat}{i:nat | i <= sn}{fuel:nat} .<fuel>.
+  (buf: !$A.arr(byte, l, 262144), off: int,
+   s: string sn, slen: int sn, i: int i, fuel: int fuel): void =
   if fuel <= 0 then ()
-  else case+ w of
-  | $W.Text(s) => () (* Text nodes: would need content_text emit *)
-  | $W.Element($W.ElementNode(wid, top, cls, hidden, tabidx, wtitle, children)) => let
+  else if i >= slen then ()
+  else let
+    val c = char2int0(string_get_at(s, i))
+    val () = $A.write_byte(buf, $AR.checked_idx(off + i, 262144), c)
+  in _write_str_bytes(buf, off, s, slen, i + 1, fuel - 1) end
+
+fn _emit_text_str{l:agz}
+  (doc: !doc_vt(l), node_id: int, s: string): void = let
+  val slen = g1u2i(string1_length(s))
+in
+  if slen <= 0 then ()
+  else if slen >= 65536 then ()
+  else let
+    val+ @doc_mk(_, _, _, mid, midl) = doc
+    val nslen = _nid_str_len(node_id, midl)
+    val op_size = 1 + (2 + nslen) + 2 + slen
+    prval () = fold@(doc)
+    val c = _auto_flush_dyn(doc, op_size)
+    val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+    val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 1)
+    val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+    val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262144), slen)
+    val () = _write_str_bytes(buf, off1 + 2, s, slen, 0, $AR.checked_nat(slen + 1))
+    val () = cursor := c + op_size
+    prval () = fold@(doc)
+  in end
+end
+
+(* Emit a widget *)
+fn _emit_widget
+  {l:agz}
+  (doc: !doc_vt(l), parent_id: int, w: $W.widget): void =
+  case+ w of
+  | $W.Text(s) => _emit_text_str(doc, parent_id, s)
+  | $W.Element(wid, top, hidden, cls) => let
       val nid = _next_id(doc)
       val @(tag, tlen) = (case+ top of
         | $W.Normal(n) => _normal_tag(n)
         | $W.Void(v) => _void_tag(v)
       ): [m:pos | m < 256] @($A.text(m), int m)
       val () = _emit_create_element(doc, nid, parent_id, tag, tlen)
-      (* Set hidden if true *)
       val () = (if hidden > 0 then _emit_set_attr_empty(doc, nid, _txt_hidden(), 6) else ())
-      (* Set tabindex if present *)
-      val () = (case+ tabidx of
-        | $W.SomeInt(ti) => let
-            val @(tv, tvl) = _int_to_text(ti)
-          in _emit_set_attr(doc, nid, _txt_tabindex(), 8, tv, tvl) end
-        | $W.NoneInt() => ())
-      (* Set title if present *)
-      val () = (case+ wtitle of
-        | $W.SomeStr(_) => () (* would need content_text handling *)
-        | $W.NoneStr() => ())
-      (* Recurse into children *)
-      val () = _emit_children(doc, nid, children, fuel - 1)
     in end
-
-and _emit_children
-  {l:agz}{fuel:nat} .<fuel, 0>.
-  (doc: !doc_vt(l), parent_id: int, children: $W.widget_list, fuel: int fuel): void =
-  if fuel <= 0 then ()
-  else case+ children of
-  | $W.WNil() => ()
-  | $W.WCons(child, rest) => let
-      val () = _emit_widget(doc, parent_id, child, fuel - 1)
-    in _emit_children(doc, parent_id, rest, fuel - 1) end
 
 (* ============================================================
    Implementations
@@ -415,8 +506,7 @@ and _emit_children
 
 implement create_document{nt}{ni}(mount_tag, tag_len, mount_id, id_len) = let
   val buf = $A.alloc<byte>(262144)
-  val doc = doc_mk(buf, 0, 1)
-  (* Emit: create root element with the mount tag and set its id *)
+  val doc = doc_mk(buf, 0, 1, mount_id, id_len)
   val () = _emit_create_element(doc, 0, ~1, mount_tag, tag_len)
   val () = _emit_set_attr(doc, 0, _txt_id(), 2, mount_id, id_len)
   val () = _flush(doc)
@@ -427,31 +517,21 @@ implement apply{l}(doc, d) = let
   | $W.RemoveAllChildren(wid) =>
       _emit_remove_children(doc, _resolve_id(wid))
   | $W.AddChild(parent_wid, child) =>
-      _emit_widget(doc, _resolve_id(parent_wid), child, 4096)
+      _emit_widget(doc, _resolve_id(parent_wid), child)
   | $W.RemoveChild(_, child_wid) =>
       _emit_remove_child(doc, _resolve_id(child_wid))
   | $W.SetHidden(wid, h) => let
       val nid = _resolve_id(wid)
     in
       if h > 0 then _emit_set_attr_empty(doc, nid, _txt_hidden(), 6)
-      else () (* removeAttribute would need opcode 6 *)
+      else ()
     end
-  | $W.SetClass(wid, cls) => () (* needs UUID lookup from document *)
-  | $W.SetTabindex(wid, ti) => let
-      val nid = _resolve_id(wid)
-    in case+ ti of
-      | $W.SomeInt(v) => let
-          val @(tv, tvl) = _int_to_text(v)
-        in _emit_set_attr(doc, nid, _txt_tabindex(), 8, tv, tvl) end
-      | $W.NoneInt() => ()
-    end
-  | $W.SetTitle(wid, t) => () (* needs content_text handling *)
-  | $W.SetAttribute(wid, _) => () (* dispatch per attribute_change *)
+  | $W.SetClass(wid, cls) => ()
   )
 in _flush(doc) end
 
 implement destroy{l}(doc) = let
-  val+ ~doc_mk(buf, _, _) = doc
+  val+ ~doc_mk(buf, _, _, _, _) = doc
 in $A.free<byte>(buf) end
 
 (* ============================================================
@@ -459,8 +539,6 @@ in $A.free<byte>(buf) end
    Wire format: [opcode:1][id_len:u16le:2][id_bytes:ni][...params...]
    ============================================================ *)
 
-(* Helper: write opcode + string node_id into buffer at cursor c.
-   Returns the offset after the id bytes. *)
 fn _write_canvas_id
   {l:agz}{cap:pos}{li:agz}{ni:pos | ni < 65536}
   {c:nat | c + 3 + ni <= cap}
@@ -473,7 +551,6 @@ fn _write_canvas_id
   val () = $A.write_borrow(buf, c + 3, node_id, id_len)
 in c + 3 + id_len end
 
-(* Helper: emit opcode + string node_id (3 + ni bytes) *)
 fn _emit_canvas_str_op
   {l:agz}{li:agz}{ni:pos | ni < 65536}
   {v:nat | v < 256}
@@ -481,13 +558,12 @@ fn _emit_canvas_str_op
    node_id: !$A.borrow(byte, li, ni), id_len: int ni): void = let
   val op_size = 3 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val _ = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
 
-(* Helper: emit opcode + string node_id + 1 i32 (7 + ni bytes) *)
 fn _emit_canvas_str_op_i32
   {l:agz}{li:agz}{ni:pos | ni < 65536}
   {v:nat | v < 256}
@@ -496,14 +572,13 @@ fn _emit_canvas_str_op_i32
    v0: int): void = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = $A.write_i32(buf, off, v0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
 
-(* Helper: emit opcode + string node_id + 2 i32 (11 + ni bytes) *)
 fn _emit_canvas_str_op_2i32
   {l:agz}{li:agz}{ni:pos | ni < 65536}
   {v:nat | v < 256}
@@ -512,7 +587,7 @@ fn _emit_canvas_str_op_2i32
    v0: int, v1: int): void = let
   val op_size = 11 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = $A.write_i32(buf, off, v0)
   val () = $A.write_i32(buf, off + 4, v1)
@@ -520,7 +595,6 @@ fn _emit_canvas_str_op_2i32
   prval () = fold@(doc)
 in end
 
-(* Helper: emit opcode + string node_id + 4 i32 (19 + ni bytes) *)
 fn _emit_canvas_str_op_4i32
   {l:agz}{li:agz}{ni:pos | ni < 65536}
   {v:nat | v < 256}
@@ -529,7 +603,7 @@ fn _emit_canvas_str_op_4i32
    v0: int, v1: int, v2: int, v3: int): void = let
   val op_size = 19 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = $A.write_i32(buf, off, v0)
   val () = $A.write_i32(buf, off + 4, v1)
@@ -560,7 +634,7 @@ implement canvas_line_to{l}{li}{ni}(doc, node_id, id_len, x, y) =
 implement canvas_arc{l}{li}{ni}(doc, node_id, id_len, cx, cy, r, start1000, end1000, ccw) = let
   val op_size = 24 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 70, node_id, id_len)
   val () = $A.write_i32(buf, off, cx)
   val () = $A.write_i32(buf, off + 4, cy)
@@ -584,7 +658,7 @@ implement canvas_stroke{l}{li}{ni}(doc, node_id, id_len) =
 implement canvas_fill_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 74, node_id, id_len)
   val () = $A.write_byte(buf, off, $AR.checked_byte(r))
   val () = $A.write_byte(buf, off + 1, $AR.checked_byte(g))
@@ -597,7 +671,7 @@ in end
 implement canvas_stroke_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 75, node_id, id_len)
   val () = $A.write_byte(buf, off, $AR.checked_byte(r))
   val () = $A.write_byte(buf, off + 1, $AR.checked_byte(g))
@@ -613,7 +687,7 @@ implement canvas_line_width{l}{li}{ni}(doc, node_id, id_len, w100) =
 implement canvas_fill_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, text_len) = let
   val op_size = 13 + id_len + text_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 77, node_id, id_len)
   val () = $A.write_i32(buf, off, x)
   val () = $A.write_i32(buf, off + 4, y)
@@ -626,7 +700,7 @@ in end
 implement canvas_stroke_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, text_len) = let
   val op_size = 13 + id_len + text_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 78, node_id, id_len)
   val () = $A.write_i32(buf, off, x)
   val () = $A.write_i32(buf, off + 4, y)
@@ -639,7 +713,7 @@ in end
 implement canvas_set_font{l}{li}{ni}{fl}(doc, node_id, id_len, font, font_len) = let
   val op_size = 5 + id_len + font_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _) = doc
+  val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 79, node_id, id_len)
   val () = $A.write_u16le(buf, off, font_len)
   val () = $A.write_text(buf, off + 2, font, font_len)
