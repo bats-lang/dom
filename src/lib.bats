@@ -462,6 +462,35 @@ fun _write_str_bytes{l:agz}{sn:nat}{i:nat | i <= sn}{fuel:nat} .<fuel>.
     val () = $A.write_byte(buf, $AR.checked_idx(off + i, 262144), $AR.checked_byte(c))
   in _write_str_bytes(buf, off, s, slen, i + 1, fuel - 1) end
 
+(* Emit SET_ATTR with a string value *)
+fn _emit_set_attr_str{l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), node_id: int,
+   attr_name: $A.text(nl), name_len: int nl,
+   s: string): void = let
+  val s1 = g1ofg0(s)
+  val slen = g1u2i(string1_length(s1))
+in
+  if slen <= 0 then ()
+  else if slen >= 65536 then ()
+  else let
+    val+ @doc_mk(_, _, _, mid, midl) = doc
+    val nslen = _nid_str_len(node_id, midl)
+    val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + slen
+    prval () = fold@(doc)
+    val c = _auto_flush_dyn(doc, op_size)
+    val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+    val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
+    val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
+    val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
+    val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 261889), attr_name, name_len)
+    val off2 = off1 + 1 + name_len
+    val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262143), slen)
+    val () = _write_str_bytes(buf, off2 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
+    val () = cursor := c + op_size
+    prval () = fold@(doc)
+  in end
+end
+
 fn _emit_text_str{l:agz}
   (doc: !doc_vt(l), node_id: int, s: string): void = let
   val s1 = g1ofg0(s)
@@ -528,6 +557,10 @@ implement apply{l}(doc, d) = let
       else ()
     end
   | $W.SetClass(wid, cls) => ()
+  | $W.SetClassName(wid, cls) =>
+      _emit_set_attr_str(doc, _resolve_id(wid), _txt_class(), 5, cls)
+  | $W.SetTextContent(wid, text) =>
+      _emit_text_str(doc, _resolve_id(wid), text)
   | $W.SetTabindex(_, _) => ()
   | $W.SetTitle(_, _) => ()
   | $W.SetAttribute(_, _) => ()
