@@ -297,13 +297,13 @@ fn _write_nid{l:agz}{nm:pos | nm < 256}
   (buf: !$A.arr(byte, l, 262144), off: int,
    node_id: int, mid: $A.text(nm), mid_len: int nm): int =
   if node_id <= 0 then let
-    val () = $A.write_u16le(buf, $AR.checked_idx(off, 262144), mid_len)
-    val () = $A.write_text(buf, $AR.checked_idx(off + 2, 262144), mid, mid_len)
+    val () = $A.write_u16le(buf, $AR.checked_idx(off, 262143), mid_len)
+    val () = $A.write_text(buf, $AR.checked_idx(off + 2, 261889), mid, mid_len)
   in off + 2 + mid_len end
   else let
     val dc = _digit_count(node_id)
     val slen = 1 + dc
-    val () = $A.write_u16le(buf, $AR.checked_idx(off, 262144), slen)
+    val () = $A.write_u16le(buf, $AR.checked_idx(off, 262143), slen)
     val () = $A.write_byte(buf, $AR.checked_idx(off + 2, 262144), 98)
     val () = _write_digits_loop(buf, off + 3, node_id, dc - 1, $AR.checked_nat(dc + 1))
   in off + 2 + slen end
@@ -327,7 +327,7 @@ fn _emit_create_element
   val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
   val off2 = _write_nid(buf, off1, parent_id, mid2, midl2)
   val () = $A.write_byte(buf, $AR.checked_idx(off2, 262144), tag_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off2 + 1, 262144), tag, tag_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off2 + 1, 261889), tag, tag_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
@@ -346,8 +346,8 @@ fn _emit_set_text
   val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
   val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 1)
   val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
-  val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262144), text_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, 262144), text, text_len)
+  val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262143), text_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, 196609), text, text_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
@@ -368,10 +368,10 @@ fn _emit_set_attr
   val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
   val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
   val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 262144), attr_name, name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 261889), attr_name, name_len)
   val off2 = off1 + 1 + name_len
-  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262144), value_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, 262144), attr_value, value_len)
+  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262143), value_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, 196609), attr_value, value_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
@@ -390,9 +390,9 @@ fn _emit_set_attr_empty
   val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 2)
   val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
   val () = $A.write_byte(buf, $AR.checked_idx(off1, 262144), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 262144), attr_name, name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, 261889), attr_name, name_len)
   val off2 = off1 + 1 + name_len
-  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262144), 0)
+  val () = $A.write_u16le(buf, $AR.checked_idx(off2, 262143), 0)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
@@ -459,12 +459,13 @@ fun _write_str_bytes{l:agz}{sn:nat}{i:nat | i <= sn}{fuel:nat} .<fuel>.
   else if i >= slen then ()
   else let
     val c = char2int0(string_get_at(s, i))
-    val () = $A.write_byte(buf, $AR.checked_idx(off + i, 262144), c)
+    val () = $A.write_byte(buf, $AR.checked_idx(off + i, 262144), $AR.checked_byte(c))
   in _write_str_bytes(buf, off, s, slen, i + 1, fuel - 1) end
 
 fn _emit_text_str{l:agz}
   (doc: !doc_vt(l), node_id: int, s: string): void = let
-  val slen = g1u2i(string1_length(s))
+  val s1 = g1ofg0(s)
+  val slen = g1u2i(string1_length(s1))
 in
   if slen <= 0 then ()
   else if slen >= 65536 then ()
@@ -477,8 +478,8 @@ in
     val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
     val () = $A.write_byte(buf, $AR.checked_idx(c, 262144), 1)
     val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
-    val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262144), slen)
-    val () = _write_str_bytes(buf, off1 + 2, s, slen, 0, $AR.checked_nat(slen + 1))
+    val () = $A.write_u16le(buf, $AR.checked_idx(off1, 262143), slen)
+    val () = _write_str_bytes(buf, off1 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
     val () = cursor := c + op_size
     prval () = fold@(doc)
   in end
@@ -490,7 +491,7 @@ fn _emit_widget
   (doc: !doc_vt(l), parent_id: int, w: $W.widget): void =
   case+ w of
   | $W.Text(s) => _emit_text_str(doc, parent_id, s)
-  | $W.Element(wid, top, hidden, cls) => let
+  | $W.Element($W.ElementNode(wid, top, _, hidden, _, _, _)) => let
       val nid = _next_id(doc)
       val @(tag, tlen) = (case+ top of
         | $W.Normal(n) => _normal_tag(n)
@@ -527,6 +528,9 @@ implement apply{l}(doc, d) = let
       else ()
     end
   | $W.SetClass(wid, cls) => ()
+  | $W.SetTabindex(_, _) => ()
+  | $W.SetTitle(_, _) => ()
+  | $W.SetAttribute(_, _) => ()
   )
 in _flush(doc) end
 
