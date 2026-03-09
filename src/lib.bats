@@ -41,6 +41,10 @@ vtypedef doc_vt(l:addr) = document(l)
   {l:agz}
   (doc: !document(l), d: $W.diff): void
 
+#pub fun apply_list
+  {l:agz}
+  (doc: !document(l), dl: $W.diff_list): void
+
 #pub fun destroy
   {l:agz}
   (doc: document(l)): void
@@ -189,6 +193,9 @@ fn _tag_img(): $A.text(3) =
 fn _tag_input(): $A.text(5) =
   let var c = @[char][5]('i', 'n', 'p', 'u', 't') in $S.text_of_chars(c, 5) end
 
+fn _tag_style(): $A.text(5) =
+  let var c = @[char][5]('s', 't', 'y', 'l', 'e') in $S.text_of_chars(c, 5) end
+
 fn _tag_default(): $A.text(3) = _tag_div()
 
 fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
@@ -199,6 +206,7 @@ fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
   | $W.Ul() => @(_tag_ul(), 2)
   | $W.Li() => @(_tag_li(), 2)
   | $W.A(_, _) => @(_tag_a(), 1)
+  | $W.Style() => @(_tag_style(), 5)
   | _ => @(_tag_default(), 3)
 
 fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
@@ -556,7 +564,23 @@ implement apply{l}(doc, d) = let
   | $W.SetHidden(wid, h) =>
       if h > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
       else ()
-  | $W.SetClass(wid, cls) => ()
+  | $W.SetClass(wid, _, cls_text, cls_len) => let
+      val+ @doc_mk(_, _, _, mid, midl) = doc
+      val nslen = _wid_str_len(wid, midl)
+      val op_size = 1 + (2 + nslen) + 1 + 5 + 2 + cls_len
+      prval () = fold@(doc)
+      val c = _auto_flush_dyn(doc, op_size)
+      val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+      val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
+      val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+      val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), 5)
+      val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), _txt_class(), 5)
+      val off2 = off1 + 6
+      val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), cls_len)
+      val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, _CAP - 255), cls_text, cls_len)
+      val () = cursor := c + op_size
+      prval () = fold@(doc)
+    in end
   | $W.SetClassName(wid, cls) =>
       _emit_set_attr_str_wid(doc, wid, _txt_class(), 5, cls)
   | $W.SetTextContent(wid, text) =>
@@ -566,6 +590,13 @@ implement apply{l}(doc, d) = let
   | $W.SetAttribute(_, _) => ()
   )
 in _flush(doc) end
+
+implement apply_list{l}(doc, dl) =
+  case+ dl of
+  | $W.DLNil() => ()
+  | $W.DLCons(d, rest) => let
+      val () = apply(doc, d)
+    in apply_list(doc, rest) end
 
 implement destroy{l}(doc) = let
   val+ ~doc_mk(buf, _, _, _, _) = doc
