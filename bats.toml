@@ -11,3 +11,5 @@ unsafe = false
 "css" = ""
 "str" = ""
 "widget" = ""
+"promise" = ""
+"result" = ""
