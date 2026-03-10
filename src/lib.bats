@@ -196,6 +196,28 @@ fn _tag_input(): $A.text(5) =
 fn _tag_style(): $A.text(5) =
   let var c = @[char][5]('s', 't', 'y', 'l', 'e') in $S.text_of_chars(c, 5) end
 
+fn _txt_type(): $A.text(4) =
+  let var c = @[char][4]('t', 'y', 'p', 'e') in $S.text_of_chars(c, 4) end
+
+fn _input_type_str(it: $W.input_type): string =
+  case+ it of
+  | $W.InputText() => "text"
+  | $W.InputPassword() => "password"
+  | $W.InputEmail() => "email"
+  | $W.InputNumber() => "number"
+  | $W.InputCheckbox() => "checkbox"
+  | $W.InputRadio() => "radio"
+  | $W.InputRange() => "range"
+  | $W.InputDate() => "date"
+  | $W.InputTime() => "time"
+  | $W.InputDatetimeLocal() => "datetime-local"
+  | $W.InputFile() => "file"
+  | $W.InputColor() => "color"
+  | $W.InputHidden() => "hidden"
+  | $W.InputSubmit() => "submit"
+  | $W.InputReset() => "reset"
+  | $W.InputButton() => "button"
+
 fn _tag_default(): $A.text(3) = _tag_div()
 
 fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
@@ -539,6 +561,10 @@ fn _emit_widget
       ): [m:pos | m < 256] @($A.text(m), int m)
       val () = _emit_create_wid(doc, wid, parent_wid, tag, tlen)
       val () = (if hidden > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6) else ())
+      val () = (case+ top of
+        | $W.Void($W.HtmlInput(it, _, _, _, _, _)) =>
+            _emit_set_attr_str_wid(doc, wid, _txt_type(), 4, _input_type_str(it))
+        | _ => ())
     in end
 
 (* ============================================================
