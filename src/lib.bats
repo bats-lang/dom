@@ -13,8 +13,6 @@ staload "wasm.bats-packages.dev/bridge/src/dom.bats"
 
 #pub stadef DOM_BUF_CAP = 262144
 
-staload "wasm.bats-packages.dev/bridge/src/stash.bats"
-
 (* ============================================================
    Document: owns mount point, CSS rules, node ID counter
    ============================================================ *)
@@ -39,6 +37,20 @@ vtypedef doc_vt(l:addr) = document(l)
   (mount_tag: $A.text(nt), tag_len: int nt,
    mount_id: $A.text(ni), id_len: int ni): [l:agz] document(l)
 
+(* Open an existing document mount without emitting createElement.
+   Use after the mount was already created by create_document.
+   next_id is the node counter to resume from (from get_next_id). *)
+#pub fun open_document
+  {ni:pos | ni < 256}
+  (mount_id: $A.text(ni), id_len: int ni,
+   next_id: int): [l:agz] document(l)
+
+(* Get the current node ID counter from a document.
+   Use before destroy to save the counter for later open_document calls. *)
+#pub fun get_next_id
+  {l:agz}
+  (doc: !document(l)): int
+
 #pub fun apply
   {l:agz}
   (doc: !document(l), d: $W.diff): void
@@ -50,21 +62,6 @@ vtypedef doc_vt(l:addr) = document(l)
 #pub fun destroy
   {l:agz}
   (doc: document(l)): void
-
-(* Stash document for use from event callbacks.
-   Consumes the document; retrieve with unstash_doc or use apply_stashed. *)
-#pub fun stash_doc
-  {l:agz}
-  (doc: document(l)): void
-
-#pub fun apply_stashed
-  (d: $W.diff): void
-
-#pub fun apply_list_stashed
-  (dl: $W.diff_list): void
-
-#pub fun destroy_stashed
-  (): void
 
 (* ============================================================
    Canvas API — emit canvas opcodes into the diff buffer
@@ -645,24 +642,15 @@ implement destroy{l}(doc) = let
   val+ ~doc_mk(buf, _, _, _, _) = doc
 in $A.free<byte>(buf) end
 
-implement stash_doc{l}(doc) =
-  stash_linear<document(l)>(0, doc)
+implement open_document{ni}(mount_id, id_len, next_id) = let
+  val buf = $A.alloc<byte>(_CAP)
+in doc_mk(buf, 0, next_id, mount_id, id_len) end
 
-implement apply_stashed(d) = let
-  val doc = unstash_linear<[l2:agz] document(l2)>(0)
-  val () = apply(doc, d)
-in stash_linear<[l2:agz] document(l2)>(0, doc) end
-
-implement apply_list_stashed(dl) =
-  case+ dl of
-  | $W.DLNil() => ()
-  | $W.DLCons(d, rest) => let
-      val () = apply_stashed(d)
-    in apply_list_stashed(rest) end
-
-implement destroy_stashed() = let
-  val doc = unstash_linear<[l2:agz] document(l2)>(0)
-in destroy(doc) end
+implement get_next_id{l}(doc) = let
+  val+ @doc_mk(_, _, nid, _, _) = doc
+  val r = nid
+  prval () = fold@(doc)
+in r end
 
 (* ============================================================
    Canvas implementations — opcodes 64-84
