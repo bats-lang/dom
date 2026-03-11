@@ -13,6 +13,8 @@ staload "wasm.bats-packages.dev/bridge/src/dom.bats"
 
 #pub stadef DOM_BUF_CAP = 262144
 
+staload "wasm.bats-packages.dev/bridge/src/stash.bats"
+
 (* ============================================================
    Document: owns mount point, CSS rules, node ID counter
    ============================================================ *)
@@ -48,6 +50,21 @@ vtypedef doc_vt(l:addr) = document(l)
 #pub fun destroy
   {l:agz}
   (doc: document(l)): void
+
+(* Stash document for use from event callbacks.
+   Consumes the document; retrieve with unstash_doc or use apply_stashed. *)
+#pub fun stash_doc
+  {l:agz}
+  (doc: document(l)): void
+
+#pub fun apply_stashed
+  (d: $W.diff): void
+
+#pub fun apply_list_stashed
+  (dl: $W.diff_list): void
+
+#pub fun destroy_stashed
+  (): void
 
 (* ============================================================
    Canvas API — emit canvas opcodes into the diff buffer
@@ -627,6 +644,25 @@ implement apply_list{l}(doc, dl) =
 implement destroy{l}(doc) = let
   val+ ~doc_mk(buf, _, _, _, _) = doc
 in $A.free<byte>(buf) end
+
+implement stash_doc{l}(doc) =
+  stash_linear<document(l)>(0, doc)
+
+implement apply_stashed(d) = let
+  val doc = unstash_linear<[l2:agz] document(l2)>(0)
+  val () = apply(doc, d)
+in stash_linear<[l2:agz] document(l2)>(0, doc) end
+
+implement apply_list_stashed(dl) =
+  case+ dl of
+  | $W.DLNil() => ()
+  | $W.DLCons(d, rest) => let
+      val () = apply_stashed(d)
+    in apply_list_stashed(rest) end
+
+implement destroy_stashed() = let
+  val doc = unstash_linear<[l2:agz] document(l2)>(0)
+in destroy(doc) end
 
 (* ============================================================
    Canvas implementations — opcodes 64-84
