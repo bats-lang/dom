@@ -489,6 +489,25 @@ fn _emit_set_attr_empty_wid
   prval () = fold@(doc)
 in end
 
+(* Opcode 7: remove_attr, widget_id *)
+fn _emit_remove_attr_wid
+  {l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id,
+   attr_name: $A.text(nl), name_len: int nl): void = let
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _wid_str_len(wid, midl)
+  val op_size = 1 + (2 + nslen) + 1 + name_len
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 7)
+  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
+  val () = cursor := c + op_size
+  prval () = fold@(doc)
+in end
+
 fn _flush{l:agz}(doc: !doc_vt(l)): void = let
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val c = cursor
@@ -627,7 +646,7 @@ implement apply{l}(doc, d) = let
       _emit_remove_child_wid(doc, child_wid)
   | $W.SetHidden(wid, h) =>
       if h > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
-      else ()
+      else _emit_remove_attr_wid(doc, wid, _txt_hidden(), 6)
   | $W.SetClass(wid, _, cls_text, cls_len) => let
       val+ @doc_mk(_, _, _, mid, midl) = doc
       val nslen = _wid_str_len(wid, midl)
