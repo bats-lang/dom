@@ -562,6 +562,30 @@ in
   in end
 end
 
+(* Opcode 6: SET_INNER_HTML with string value, widget_id target *)
+fn _emit_set_inner_html_wid{l:agz}
+  (doc: !doc_vt(l), wid: $W.widget_id, s: string): void = let
+  val s1 = g1ofg0(s)
+  val slen = g1u2i(string1_length(s1))
+in
+  if slen <= 0 then ()
+  else if slen >= 65536 then ()
+  else let
+    val+ @doc_mk(_, _, _, mid, midl) = doc
+    val nslen = _wid_str_len(wid, midl)
+    val op_size = 1 + (2 + nslen) + 2 + slen
+    prval () = fold@(doc)
+    val c = _auto_flush_dyn(doc, op_size)
+    val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+    val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 6)
+    val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+    val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), slen)
+    val () = _write_str_bytes(buf, off1 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
+    val () = cursor := c + op_size
+    prval () = fold@(doc)
+  in end
+end
+
 (* Emit a widget using widget_id for wire IDs *)
 fn _emit_widget
   {l:agz}
@@ -625,6 +649,8 @@ implement apply{l}(doc, d) = let
       _emit_set_attr_str_wid(doc, wid, _txt_class(), 5, cls)
   | $W.SetTextContent(wid, text) =>
       _emit_set_text_wid(doc, wid, text)
+  | $W.SetInnerHtml(wid, html) =>
+      _emit_set_inner_html_wid(doc, wid, html)
   | $W.SetTabindex(_, _) => ()
   | $W.SetTitle(_, _) => ()
   | $W.SetAttribute(_, _) => ()
