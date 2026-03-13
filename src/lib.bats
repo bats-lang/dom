@@ -213,24 +213,24 @@ fn _tag_style(): $A.text(5) =
 fn _txt_type(): $A.text(4) =
   let var c = @[char][4]('t', 'y', 'p', 'e') in $S.text_of_chars(c, 4) end
 
-fn _input_type_str(it: $W.input_type): string =
+fn _input_type_text(it: $W.input_type): [m:pos | m < 256] @($A.text(m), int m) =
   case+ it of
-  | $W.InputText() => "text"
-  | $W.InputPassword() => "password"
-  | $W.InputEmail() => "email"
-  | $W.InputNumber() => "number"
-  | $W.InputCheckbox() => "checkbox"
-  | $W.InputRadio() => "radio"
-  | $W.InputRange() => "range"
-  | $W.InputDate() => "date"
-  | $W.InputTime() => "time"
-  | $W.InputDatetimeLocal() => "datetime-local"
-  | $W.InputFile() => "file"
-  | $W.InputColor() => "color"
-  | $W.InputHidden() => "hidden"
-  | $W.InputSubmit() => "submit"
-  | $W.InputReset() => "reset"
-  | $W.InputButton() => "button"
+  | $W.InputText() => let var c = @[char][4]('t', 'e', 'x', 't') in @($S.text_of_chars(c, 4), 4) end
+  | $W.InputPassword() => let var c = @[char][8]('p', 'a', 's', 's', 'w', 'o', 'r', 'd') in @($S.text_of_chars(c, 8), 8) end
+  | $W.InputEmail() => let var c = @[char][5]('e', 'm', 'a', 'i', 'l') in @($S.text_of_chars(c, 5), 5) end
+  | $W.InputNumber() => let var c = @[char][6]('n', 'u', 'm', 'b', 'e', 'r') in @($S.text_of_chars(c, 6), 6) end
+  | $W.InputCheckbox() => let var c = @[char][8]('c', 'h', 'e', 'c', 'k', 'b', 'o', 'x') in @($S.text_of_chars(c, 8), 8) end
+  | $W.InputRadio() => let var c = @[char][5]('r', 'a', 'd', 'i', 'o') in @($S.text_of_chars(c, 5), 5) end
+  | $W.InputRange() => let var c = @[char][5]('r', 'a', 'n', 'g', 'e') in @($S.text_of_chars(c, 5), 5) end
+  | $W.InputDate() => let var c = @[char][4]('d', 'a', 't', 'e') in @($S.text_of_chars(c, 4), 4) end
+  | $W.InputTime() => let var c = @[char][4]('t', 'i', 'm', 'e') in @($S.text_of_chars(c, 4), 4) end
+  | $W.InputDatetimeLocal() => let var c = @[char][14]('d', 'a', 't', 'e', 't', 'i', 'm', 'e', '-', 'l', 'o', 'c', 'a', 'l') in @($S.text_of_chars(c, 14), 14) end
+  | $W.InputFile() => let var c = @[char][4]('f', 'i', 'l', 'e') in @($S.text_of_chars(c, 4), 4) end
+  | $W.InputColor() => let var c = @[char][5]('c', 'o', 'l', 'o', 'r') in @($S.text_of_chars(c, 5), 5) end
+  | $W.InputHidden() => let var c = @[char][6]('h', 'i', 'd', 'd', 'e', 'n') in @($S.text_of_chars(c, 6), 6) end
+  | $W.InputSubmit() => let var c = @[char][6]('s', 'u', 'b', 'm', 'i', 't') in @($S.text_of_chars(c, 6), 6) end
+  | $W.InputReset() => let var c = @[char][5]('r', 'e', 's', 'e', 't') in @($S.text_of_chars(c, 5), 5) end
+  | $W.InputButton() => let var c = @[char][6]('b', 'u', 't', 't', 'o', 'n') in @($S.text_of_chars(c, 6), 6) end
 
 fn _tag_default(): $A.text(3) = _tag_div()
 
@@ -241,7 +241,7 @@ fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
   | $W.P() => @(_tag_p(), 1)
   | $W.Ul() => @(_tag_ul(), 2)
   | $W.Li() => @(_tag_li(), 2)
-  | $W.A(_, _) => @(_tag_a(), 1)
+  | $W.A(_, _, _) => @(_tag_a(), 1)
   | $W.Style() => @(_tag_style(), 5)
   | _ => @(_tag_default(), 3)
 
@@ -249,7 +249,7 @@ fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
   case+ v of
   | $W.Br() => @(_tag_br(), 2)
   | $W.Hr() => @(_tag_hr(), 2)
-  | $W.Img(_, _, _) => @(_tag_img(), 3)
+  | $W.Img(_, _, _, _, _) => @(_tag_img(), 3)
   | $W.HtmlInput(_, _, _, _, _, _) => @(_tag_input(), 5)
   | _ => @(_tag_default(), 3)
 
@@ -516,101 +516,72 @@ fn _flush{l:agz}(doc: !doc_vt(l)): void = let
   prval () = fold@(doc)
 in end
 
-(* ---- Text node emission from string ---- *)
+(* ---- Text-based wire emission ---- *)
 
-fun _write_str_bytes{l:agz}{sn:nat}{i:nat | i <= sn}{fuel:nat} .<fuel>.
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int,
-   s: string sn, slen: int sn, i: int i, fuel: int fuel): void =
-  if fuel <= 0 then ()
-  else if i >= slen then ()
-  else let
-    val c = char2int0(string_get_at(s, i))
-    val () = $A.write_byte(buf, $AR.checked_idx(off + i, _CAP), $AR.checked_byte(c))
-  in _write_str_bytes(buf, off, s, slen, i + 1, fuel - 1) end
-
-(* Opcode 2: SET_ATTR with string value, widget_id target *)
-fn _emit_set_attr_str_wid{l:agz}{nl:pos | nl < 256}
+(* Opcode 2: SET_ATTR with text value, widget_id target *)
+fn _emit_set_attr_text_wid{l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl,
-   s: string): void = let
-  val s1 = g1ofg0(s)
-  val slen = g1u2i(string1_length(s1))
-in
-  if slen <= 0 then ()
-  else if slen >= 65536 then ()
-  else let
-    val+ @doc_mk(_, _, _, mid, midl) = doc
-    val nslen = _wid_str_len(wid, midl)
-    val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + slen
-    prval () = fold@(doc)
-    val c = _auto_flush_dyn(doc, op_size)
-    val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-    val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
-    val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-    val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
-    val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
-    val off2 = off1 + 1 + name_len
-    val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), slen)
-    val () = _write_str_bytes(buf, off2 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
-    val () = cursor := c + op_size
-    prval () = fold@(doc)
-  in end
-end
+   attr_val: $A.text(vl), val_len: int vl): void = let
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _wid_str_len(wid, midl)
+  val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + val_len
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
+  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+  val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
+  val off2 = off1 + 1 + name_len
+  val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), val_len)
+  val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, _CAP - 255), attr_val, val_len)
+  val () = cursor := c + op_size
+  prval () = fold@(doc)
+in end
 
-(* Opcode 1: SET_TEXT with string value, widget_id target *)
-fn _emit_set_text_wid{l:agz}
-  (doc: !doc_vt(l), wid: $W.widget_id, s: string): void = let
-  val s1 = g1ofg0(s)
-  val slen = g1u2i(string1_length(s1))
-in
-  if slen <= 0 then ()
-  else if slen >= 65536 then ()
-  else let
-    val+ @doc_mk(_, _, _, mid, midl) = doc
-    val nslen = _wid_str_len(wid, midl)
-    val op_size = 1 + (2 + nslen) + 2 + slen
-    prval () = fold@(doc)
-    val c = _auto_flush_dyn(doc, op_size)
-    val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-    val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 1)
-    val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-    val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), slen)
-    val () = _write_str_bytes(buf, off1 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
-    val () = cursor := c + op_size
-    prval () = fold@(doc)
-  in end
-end
+(* Opcode 1: SET_TEXT with text value, widget_id target *)
+fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id,
+   t: $A.text(tl), tlen: int tl): void = let
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _wid_str_len(wid, midl)
+  val op_size = 1 + (2 + nslen) + 2 + tlen
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 1)
+  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+  val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), tlen)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 255), t, tlen)
+  val () = cursor := c + op_size
+  prval () = fold@(doc)
+in end
 
-(* Opcode 6: SET_INNER_HTML with string value, widget_id target *)
-fn _emit_set_inner_html_wid{l:agz}
-  (doc: !doc_vt(l), wid: $W.widget_id, s: string): void = let
-  val s1 = g1ofg0(s)
-  val slen = g1u2i(string1_length(s1))
-in
-  if slen <= 0 then ()
-  else if slen >= 65536 then ()
-  else let
-    val+ @doc_mk(_, _, _, mid, midl) = doc
-    val nslen = _wid_str_len(wid, midl)
-    val op_size = 1 + (2 + nslen) + 2 + slen
-    prval () = fold@(doc)
-    val c = _auto_flush_dyn(doc, op_size)
-    val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-    val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 6)
-    val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-    val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), slen)
-    val () = _write_str_bytes(buf, off1 + 2, s1, slen, 0, $AR.checked_nat(slen + 1))
-    val () = cursor := c + op_size
-    prval () = fold@(doc)
-  in end
-end
+(* Opcode 6: SET_INNER_HTML with text value, widget_id target *)
+fn _emit_set_inner_html_text_wid{l:agz}{tl:pos | tl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id,
+   t: $A.text(tl), tlen: int tl): void = let
+  val+ @doc_mk(_, _, _, mid, midl) = doc
+  val nslen = _wid_str_len(wid, midl)
+  val op_size = 1 + (2 + nslen) + 2 + tlen
+  prval () = fold@(doc)
+  val c = _auto_flush_dyn(doc, op_size)
+  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
+  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 6)
+  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
+  val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), tlen)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 255), t, tlen)
+  val () = cursor := c + op_size
+  prval () = fold@(doc)
+in end
 
 (* Emit a widget using widget_id for wire IDs *)
 fn _emit_widget
   {l:agz}
   (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget): void =
   case+ w of
-  | $W.Text(s) => _emit_set_text_wid(doc, parent_wid, s)
+  | $W.Text(t, tlen) => _emit_set_text_text_wid(doc, parent_wid, t, tlen)
   | $W.Element($W.ElementNode(wid, top, _, hidden, _, _, _)) => let
       val @(tag, tlen) = (case+ top of
         | $W.Normal(n) => _normal_tag(n)
@@ -619,8 +590,9 @@ fn _emit_widget
       val () = _emit_create_wid(doc, wid, parent_wid, tag, tlen)
       val () = (if hidden > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6) else ())
       val () = (case+ top of
-        | $W.Void($W.HtmlInput(it, _, _, _, _, _)) =>
-            _emit_set_attr_str_wid(doc, wid, _txt_type(), 4, _input_type_str(it))
+        | $W.Void($W.HtmlInput(it, _, _, _, _, _)) => let
+            val @(tv, tvl) = _input_type_text(it)
+          in _emit_set_attr_text_wid(doc, wid, _txt_type(), 4, tv, tvl) end
         | _ => ())
     in end
 
@@ -664,12 +636,12 @@ implement apply{l}(doc, d) = let
       val () = cursor := c + op_size
       prval () = fold@(doc)
     in end
-  | $W.SetClassName(wid, cls) =>
-      _emit_set_attr_str_wid(doc, wid, _txt_class(), 5, cls)
-  | $W.SetTextContent(wid, text) =>
-      _emit_set_text_wid(doc, wid, text)
-  | $W.SetInnerHtml(wid, html) =>
-      _emit_set_inner_html_wid(doc, wid, html)
+  | $W.SetClassName(wid, cls, clen) =>
+      _emit_set_attr_text_wid(doc, wid, _txt_class(), 5, cls, clen)
+  | $W.SetTextContent(wid, text, tlen) =>
+      _emit_set_text_text_wid(doc, wid, text, tlen)
+  | $W.SetInnerHtml(wid, html, hlen) =>
+      _emit_set_inner_html_text_wid(doc, wid, html, hlen)
   | $W.SetTabindex(_, _) => ()
   | $W.SetTitle(_, _) => ()
   | $W.SetAttribute(_, _) => ()
