@@ -541,7 +541,7 @@ fn _emit_set_attr_text_wid{l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
 in end
 
 (* Opcode 1: SET_TEXT with text value, widget_id target *)
-fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 256}
+fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
   (doc: !doc_vt(l), wid: $W.widget_id,
    t: $A.text(tl), tlen: int tl): void = let
   val+ @doc_mk(_, _, _, mid, midl) = doc
@@ -553,13 +553,13 @@ fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 256}
   val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 1)
   val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
   val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), tlen)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 255), t, tlen)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 65535), t, tlen)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
 (* Opcode 6: SET_INNER_HTML with text value, widget_id target *)
-fn _emit_set_inner_html_text_wid{l:agz}{tl:pos | tl < 256}
+fn _emit_set_inner_html_text_wid{l:agz}{tl:pos | tl < 65536}
   (doc: !doc_vt(l), wid: $W.widget_id,
    t: $A.text(tl), tlen: int tl): void = let
   val+ @doc_mk(_, _, _, mid, midl) = doc
@@ -571,7 +571,7 @@ fn _emit_set_inner_html_text_wid{l:agz}{tl:pos | tl < 256}
   val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 6)
   val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
   val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), tlen)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 255), t, tlen)
+  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 65535), t, tlen)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
