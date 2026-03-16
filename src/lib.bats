@@ -416,6 +416,71 @@ local
 
 macdef _CAP = 262144
 
+(* Unsigned right shift *)
+fn _ushr(x: int, n: int): int =
+  $AR.band_int_int($AR.bsr_int_int(x, n),
+    $AR.sub_int_int($AR.bsl_int_int(1, $AR.sub_int_int(32, n)), 1))
+
+(* ============================================================
+   Safe g0-to-g1 nibble/byte conversion (same pattern as sha256)
+   ============================================================ *)
+
+fun _find_nibble {k:nat | k <= 16} .<16-k>.
+  (target: int, k: int(k)): [r:nat | r < 16] int(r) =
+  if $AR.gte_g1(k, 16) then 0
+  else if $AR.eq_int_int(target, k) then k
+  else _find_nibble(target, $AR.add_g1(k, 1))
+
+fn _g1_byte(x: int): [v:nat | v < 256] int(v) = let
+  val hi = _find_nibble($AR.band_int_int(_ushr(x, 4), 15), 0)
+  val lo = _find_nibble($AR.band_int_int(x, 15), 0)
+in $AR.add_g1($AR.mul_g1(hi, 16), lo) end
+
+(* ============================================================
+   Safe write helpers — replace array write_ functions
+   ============================================================ *)
+
+fn _wb {l:agz}{n:pos}{i:nat | i < n}{v:nat | v < 256}
+  (buf: !$A.arr(byte, l, n), i: int(i), v: int(v)): void =
+  $A.set<byte>(buf, i, $A.int2byte(v))
+
+fn _wu16le {l:agz}{n:pos}{i:nat | i + 2 <= n}{v:nat | v < 65536}
+  (buf: !$A.arr(byte, l, n), i: int(i), v: int(v)): void = let
+  val lo = _g1_byte($AR.band_int_int(v, 255))
+  val hi = _g1_byte($AR.band_int_int(_ushr(v, 8), 255))
+  val () = $A.set<byte>(buf, i, $A.int2byte(lo))
+  val () = $A.set<byte>(buf, $AR.add_g1(i, 1), $A.int2byte(hi))
+in end
+
+fn _wi32 {l:agz}{n:pos}{i:nat | i + 4 <= n}
+  (buf: !$A.arr(byte, l, n), i: int(i), v: int): void = let
+  val b0 = _g1_byte($AR.band_int_int(v, 255))
+  val b1 = _g1_byte($AR.band_int_int(_ushr(v, 8), 255))
+  val b2 = _g1_byte($AR.band_int_int(_ushr(v, 16), 255))
+  val b3 = _g1_byte($AR.band_int_int(_ushr(v, 24), 255))
+  val () = $A.set<byte>(buf, i, $A.int2byte(b0))
+  val () = $A.set<byte>(buf, $AR.add_g1(i, 1), $A.int2byte(b1))
+  val () = $A.set<byte>(buf, $AR.add_g1(i, 2), $A.int2byte(b2))
+  val () = $A.set<byte>(buf, $AR.add_g1(i, 3), $A.int2byte(b3))
+in end
+
+fun _ctext {l:agz}{n:pos}{off:nat}{tl:nat | off + tl <= n}{k:nat | k <= tl} .<tl-k>.
+  (buf: !$A.arr(byte, l, n), off: int(off), t: $A.text(tl), tl: int(tl), k: int(k)): void =
+  if $AR.gte_g1(k, tl) then ()
+  else let
+    val b = $A.text_get(t, k)
+    val () = $A.set<byte>(buf, $AR.add_g1(off, k), b)
+  in _ctext(buf, off, t, tl, $AR.add_g1(k, 1)) end
+
+fun _cborrow {ld:agz}{ls:agz}{n:pos}{m:pos}{off:nat | off + m <= n}{k:nat | k <= m} .<m-k>.
+  (dst: !$A.arr(byte, ld, n), off: int(off),
+   src: !$A.borrow(byte, ls, m), len: int(m), k: int(k)): void =
+  if $AR.gte_g1(k, len) then ()
+  else let
+    val b = $A.read<byte>(src, k)
+    val () = $A.set<byte>(dst, $AR.add_g1(off, k), b)
+  in _cborrow(dst, off, src, len, $AR.add_g1(k, 1)) end
+
 in
 
 fn _flush_arr{l:agz}{m:nat | m <= DOM_BUF_CAP}
@@ -428,38 +493,44 @@ fn _auto_flush
   (doc: !doc_vt(l), needed: int needed)
   : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
   val+ @doc_mk(buf, cursor, _, _, _) = doc
-  val c0 = cursor
-  val c1 = $AR.checked_idx(c0, _CAP)
+  val c0 = g1ofg0(cursor)
 in
-  if c1 + needed > _CAP then let
-    val () = _flush_arr(buf, $AR.checked_idx(c0, _CAP))
+  if c0 < 0 then let
     val () = cursor := 0
     prval () = fold@(doc)
   in 0 end
-  else if c1 >= 0 then let
-    prval () = fold@(doc)
-  in c1 end
-  else let
-    val () = _flush_arr(buf, $AR.checked_idx(c0, _CAP))
+  else if c0 > _CAP then let
     val () = cursor := 0
     prval () = fold@(doc)
   in 0 end
-end
-
-(* Dynamic auto_flush for DOM ops with runtime-computed sizes *)
-fn _auto_flush_dyn{l:agz}
-  (doc: !doc_vt(l), needed: int): int = let
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
-  val c0 = cursor
-in
-  if c0 + needed > _CAP then let
-    val () = if c0 > 0 then _flush_arr(buf, $AR.checked_idx(c0, _CAP))
+  else if c0 + needed > _CAP then let
+    val () = _flush_arr(buf, c0)
     val () = cursor := 0
     prval () = fold@(doc)
   in 0 end
   else let
     prval () = fold@(doc)
   in c0 end
+end
+
+(* Inline flush: operates on unfolded buf+cursor, returns g1 cursor *)
+fn _iflush
+  {l:agz}{needed:pos | needed <= DOM_BUF_CAP}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), cursor: &int >> int, needed: int(needed))
+  : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
+  val c0 = g1ofg0(cursor)
+in
+  if c0 < 0 then let
+    val () = cursor := 0
+  in 0 end
+  else if c0 > _CAP then let
+    val () = cursor := 0
+  in 0 end
+  else if c0 + needed > _CAP then let
+    val () = if c0 > 0 then _flush_arr(buf, c0)
+    val () = cursor := 0
+  in 0 end
+  else c0
 end
 
 (* ---- Node ID helpers ----
@@ -474,52 +545,61 @@ fn _digit_count(n: int): [m:int | 1 <= m; m <= 5] int m =
   else if n < 10000 then 4
   else 5
 
-fn _nid_str_len(node_id: int, mid_len: int): int =
-  if node_id <= 0 then mid_len
-  else 1 + _digit_count(node_id)
-
-fun _write_digits_loop{l:agz}{fuel:nat} .<fuel>.
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int, n: int, pos: int, fuel: int fuel): void =
-  if fuel <= 0 then ()
-  else if pos < 0 then ()
+fun _write_digits_loop
+  {l:agz}{base:nat}{dc:pos | dc <= 5; base + dc <= DOM_BUF_CAP}{p:int | p >= ~1; p < dc} .<p+1>.
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), base: int(base), n: int, p: int(p), dc: int(dc)): void =
+  if p < 0 then ()
   else let
-    val d = n mod 10
-    val () = $A.write_byte(buf, $AR.checked_idx(off + pos, _CAP), $AR.checked_byte(d + 48))
-  in _write_digits_loop(buf, off, n / 10, pos - 1, fuel - 1) end
+    val d = _find_nibble($AR.band_int_int(n mod 10, 15), 0)
+    val () = _wb(buf, $AR.add_g1(base, p), $AR.add_g1(d, 48))
+  in _write_digits_loop(buf, base, n / 10, $AR.sub_g1(p, 1), dc) end
 
-fn _write_nid{l:agz}{nm:pos | nm < 256}
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int,
-   node_id: int, mid: $A.text(nm), mid_len: int nm): int =
+fn _write_nid_root
+  {l:agz}{nm:pos | nm < 256}{off:nat | off + 2 + nm <= DOM_BUF_CAP}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
+   mid: $A.text(nm), mid_len: int nm): void = let
+  val () = _wu16le(buf, off, mid_len)
+  val () = _ctext(buf, $AR.add_g1(off, 2), mid, mid_len, 0)
+in end
+
+fn _write_nid_gen
+  {l:agz}{off:nat}{dc:pos | dc <= 5; off + 3 + dc <= DOM_BUF_CAP}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
+   node_id: int, dc: int(dc)): void = let
+  val slen = $AR.add_g1(1, dc)
+  val () = _wu16le(buf, off, slen)
+  val () = _wb(buf, $AR.add_g1(off, 2), 98)
+  val () = _write_digits_loop(buf, $AR.add_g1(off, 3), node_id, $AR.sub_g1(dc, 1), dc)
+in end
+
+(* g1 dispatch: write [u16le len][bytes] for an int node_id, return bytes written *)
+fn _write_nid_dispatch
+  {l:agz}{off:nat | off + 258 <= DOM_BUF_CAP}
+  {nm:pos | nm < 256}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
+   node_id: int, mid: $A.text(nm), midl: int(nm)): [sz:pos | sz <= 257] int(sz) =
   if node_id <= 0 then let
-    val () = $A.write_u16le(buf, $AR.checked_idx(off, _CAP - 1), mid_len)
-    val () = $A.write_text(buf, $AR.checked_idx(off + 2, _CAP - 255), mid, mid_len)
-  in off + 2 + mid_len end
+    val () = _write_nid_root(buf, off, mid, midl)
+  in $AR.add_g1(2, midl) end
   else let
     val dc = _digit_count(node_id)
-    val slen = 1 + dc
-    val () = $A.write_u16le(buf, $AR.checked_idx(off, _CAP - 1), slen)
-    val () = $A.write_byte(buf, $AR.checked_idx(off + 2, _CAP), 98)
-    val () = _write_digits_loop(buf, off + 3, node_id, dc - 1, $AR.checked_nat(dc + 1))
-  in off + 2 + slen end
+    val () = _write_nid_gen(buf, off, node_id, dc)
+  in $AR.add_g1(3, dc) end
 
-(* ---- Widget ID helpers ----
-   Root: uses mount_id (same as nid=0)
-   Generated(text, len): writes text directly as the wire string *)
-
-fn _wid_str_len(wid: $W.widget_id, mid_len: int): int =
+(* g1 dispatch: write [u16le len][bytes] for a widget_id, return bytes written *)
+fn _write_wid_dispatch
+  {l:agz}{off:nat | off + 258 <= DOM_BUF_CAP}
+  {nm:pos | nm < 256}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
+   wid: $W.widget_id, mid: $A.text(nm), midl: int(nm)): [sz:pos | sz <= 257] int(sz) =
   case+ wid of
-  | $W.Root() => mid_len
-  | $W.Generated(_, tlen) => tlen
-
-fn _write_wid{l:agz}{nm:pos | nm < 256}
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int,
-   wid: $W.widget_id, mid: $A.text(nm), mid_len: int nm): int =
-  case+ wid of
-  | $W.Root() => _write_nid(buf, off, 0, mid, mid_len)
+  | $W.Root() => let
+      val () = _write_nid_root(buf, off, mid, midl)
+    in $AR.add_g1(2, midl) end
   | $W.Generated(text, tlen) => let
-      val () = $A.write_u16le(buf, $AR.checked_idx(off, _CAP - 1), tlen)
-      val () = $A.write_text(buf, $AR.checked_idx(off + 2, _CAP - 255), text, tlen)
-    in off + 2 + tlen end
+      val () = _wu16le(buf, off, tlen)
+      val () = _ctext(buf, $AR.add_g1(off, 2), text, tlen, 0)
+    in $AR.add_g1(2, tlen) end
 
 (* ---- DOM opcodes with int node IDs (used by create_document) ---- *)
 
@@ -529,19 +609,18 @@ fn _emit_create_element
   {l:agz}{tl:pos | tl < 256}
   (doc: !doc_vt(l), node_id: int, parent_id: int,
    tag: $A.text(tl), tag_len: int tl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _nid_str_len(node_id, midl)
-  val pslen = _nid_str_len(parent_id, midl)
-  val op_size = 1 + (2 + nslen) + (2 + pslen) + 1 + tag_len
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 4)
-  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
-  val off2 = _write_nid(buf, off1, parent_id, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off2, _CAP), tag_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off2 + 1, _CAP - 255), tag, tag_len)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val () = _wb(buf, c, 4)
+  val off = $AR.add_g1(c, 1)
+  val sz1 = _write_nid_dispatch(buf, off, node_id, mid, midl)
+  val off = $AR.add_g1(off, sz1)
+  val sz2 = _write_nid_dispatch(buf, off, parent_id, mid, midl)
+  val off = $AR.add_g1(off, sz2)
+  val () = _wb(buf, off, tag_len)
+  val off = $AR.add_g1(off, 1)
+  val () = _ctext(buf, off, tag, tag_len, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, tag_len))
   prval () = fold@(doc)
 in end
 
@@ -551,20 +630,20 @@ fn _emit_set_attr
   (doc: !doc_vt(l), node_id: int,
    attr_name: $A.text(nl), name_len: int nl,
    attr_value: $A.text(vl), value_len: int vl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _nid_str_len(node_id, midl)
-  val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + value_len
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
-  val off1 = _write_nid(buf, c + 1, node_id, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
-  val off2 = off1 + 1 + name_len
-  val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), value_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, _CAP - 65535), attr_value, value_len)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 66051)
+  val () = _wb(buf, c, 2)
+  val off = $AR.add_g1(c, 1)
+  val sz1 = _write_nid_dispatch(buf, off, node_id, mid, midl)
+  val off = $AR.add_g1(off, sz1)
+  val () = _wb(buf, off, name_len)
+  val off = $AR.add_g1(off, 1)
+  val () = _ctext(buf, off, attr_name, name_len, 0)
+  val off = $AR.add_g1(off, name_len)
+  val () = _wu16le(buf, off, value_len)
+  val off = $AR.add_g1(off, 2)
+  val () = _ctext(buf, off, attr_value, value_len, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, value_len))
   prval () = fold@(doc)
 in end
 
@@ -575,19 +654,18 @@ fn _emit_create_wid
   {l:agz}{tl:pos | tl < 256}
   (doc: !doc_vt(l), node_wid: $W.widget_id, parent_wid: $W.widget_id,
    tag: $A.text(tl), tag_len: int tl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(node_wid, midl)
-  val pslen = _wid_str_len(parent_wid, midl)
-  val op_size = 1 + (2 + nslen) + (2 + pslen) + 1 + tag_len
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 4)
-  val off1 = _write_wid(buf, c + 1, node_wid, mid2, midl2)
-  val off2 = _write_wid(buf, off1, parent_wid, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off2, _CAP), tag_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off2 + 1, _CAP - 255), tag, tag_len)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val () = _wb(buf, c, 4)
+  val off = $AR.add_g1(c, 1)
+  val sz1 = _write_wid_dispatch(buf, off, node_wid, mid, midl)
+  val off = $AR.add_g1(off, sz1)
+  val sz2 = _write_wid_dispatch(buf, off, parent_wid, mid, midl)
+  val off = $AR.add_g1(off, sz2)
+  val () = _wb(buf, off, tag_len)
+  val off = $AR.add_g1(off, 1)
+  val () = _ctext(buf, off, tag, tag_len, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, tag_len))
   prval () = fold@(doc)
 in end
 
@@ -595,15 +673,12 @@ in end
 fn _emit_remove_children_wid
   {l:agz}
   (doc: !doc_vt(l), wid: $W.widget_id): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(wid, midl)
-  val op_size = 1 + 2 + nslen
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 3)
-  val _ = _write_wid(buf, c + 1, wid, mid2, midl2)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 259)
+  val () = _wb(buf, c, 3)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val () = cursor := g0ofg1($AR.add_g1(off, sz))
   prval () = fold@(doc)
 in end
 
@@ -611,15 +686,12 @@ in end
 fn _emit_remove_child_wid
   {l:agz}
   (doc: !doc_vt(l), wid: $W.widget_id): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(wid, midl)
-  val op_size = 1 + 2 + nslen
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 5)
-  val _ = _write_wid(buf, c + 1, wid, mid2, midl2)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 259)
+  val () = _wb(buf, c, 5)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val () = cursor := g0ofg1($AR.add_g1(off, sz))
   prval () = fold@(doc)
 in end
 
@@ -628,19 +700,18 @@ fn _emit_set_attr_empty_wid
   {l:agz}{nl:pos | nl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(wid, midl)
-  val op_size = 1 + (2 + nslen) + 1 + name_len + 2
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
-  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
-  val off2 = off1 + 1 + name_len
-  val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), 0)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 516)
+  val () = _wb(buf, c, 2)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val off = $AR.add_g1(off, sz)
+  val () = _wb(buf, off, name_len)
+  val off = $AR.add_g1(off, 1)
+  val () = _ctext(buf, off, attr_name, name_len, 0)
+  val off = $AR.add_g1(off, name_len)
+  val () = _wu16le(buf, off, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, 2))
   prval () = fold@(doc)
 in end
 
@@ -649,24 +720,24 @@ fn _emit_remove_attr_wid
   {l:agz}{nl:pos | nl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(wid, midl)
-  val op_size = 1 + (2 + nslen) + 1 + name_len
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 7)
-  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 514)
+  val () = _wb(buf, c, 7)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val off = $AR.add_g1(off, sz)
+  val () = _wb(buf, off, name_len)
+  val off = $AR.add_g1(off, 1)
+  val () = _ctext(buf, off, attr_name, name_len, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, name_len))
   prval () = fold@(doc)
 in end
 
 fn _flush{l:agz}(doc: !doc_vt(l)): void = let
   val+ @doc_mk(buf, cursor, _, _, _) = doc
-  val c = cursor
-  val () = if c > 0 then _flush_arr(buf, $AR.checked_idx(c, _CAP))
+  val c = g1ofg0(cursor)
+  val () = if c > 0 then
+    if c <= _CAP then _flush_arr(buf, c)
   val () = cursor := 0
   prval () = fold@(doc)
 in end
@@ -678,20 +749,20 @@ fn _emit_set_attr_text_wid{l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl,
    attr_val: $A.text(vl), val_len: int vl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(wid, midl)
-  val op_size = 1 + (2 + nslen) + 1 + name_len + 2 + val_len
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
-  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-  val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), name_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), attr_name, name_len)
-  val off2 = off1 + 1 + name_len
-  val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), val_len)
-  val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, _CAP - 255), attr_val, val_len)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val () = _wb(buf, c, 2)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val off = $AR.add_g1(off, sz)
+  val () = _wb(buf, off, name_len)
+  val off = $AR.add_g1(off, 1)
+  val () = _ctext(buf, off, attr_name, name_len, 0)
+  val off = $AR.add_g1(off, name_len)
+  val () = _wu16le(buf, off, val_len)
+  val off = $AR.add_g1(off, 2)
+  val () = _ctext(buf, off, attr_val, val_len, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, val_len))
   prval () = fold@(doc)
 in end
 
@@ -699,17 +770,16 @@ in end
 fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
   (doc: !doc_vt(l), wid: $W.widget_id,
    t: $A.text(tl), tlen: int tl): void = let
-  val+ @doc_mk(_, _, _, mid, midl) = doc
-  val nslen = _wid_str_len(wid, midl)
-  val op_size = 1 + (2 + nslen) + 2 + tlen
-  prval () = fold@(doc)
-  val c = _auto_flush_dyn(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-  val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 1)
-  val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-  val () = $A.write_u16le(buf, $AR.checked_idx(off1, _CAP - 1), tlen)
-  val () = $A.write_text(buf, $AR.checked_idx(off1 + 2, _CAP - 65535), t, tlen)
-  val () = cursor := c + op_size
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 65795)
+  val () = _wb(buf, c, 1)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val off = $AR.add_g1(off, sz)
+  val () = _wu16le(buf, off, tlen)
+  val off = $AR.add_g1(off, 2)
+  val () = _ctext(buf, off, t, tlen, 0)
+  val () = cursor := g0ofg1($AR.add_g1(off, tlen))
   prval () = fold@(doc)
 in end
 
@@ -757,20 +827,20 @@ implement apply{l}(doc, d) = let
       if h > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
       else _emit_remove_attr_wid(doc, wid, _txt_hidden(), 6)
   | $W.SetClass(wid, _, cls_text, cls_len) => let
-      val+ @doc_mk(_, _, _, mid, midl) = doc
-      val nslen = _wid_str_len(wid, midl)
-      val op_size = 1 + (2 + nslen) + 1 + 5 + 2 + cls_len
-      prval () = fold@(doc)
-      val c = _auto_flush_dyn(doc, op_size)
-      val+ @doc_mk(buf, cursor, _, mid2, midl2) = doc
-      val () = $A.write_byte(buf, $AR.checked_idx(c, _CAP), 2)
-      val off1 = _write_wid(buf, c + 1, wid, mid2, midl2)
-      val () = $A.write_byte(buf, $AR.checked_idx(off1, _CAP), 5)
-      val () = $A.write_text(buf, $AR.checked_idx(off1 + 1, _CAP - 255), _txt_class(), 5)
-      val off2 = off1 + 6
-      val () = $A.write_u16le(buf, $AR.checked_idx(off2, _CAP - 1), cls_len)
-      val () = $A.write_text(buf, $AR.checked_idx(off2 + 2, _CAP - 255), cls_text, cls_len)
-      val () = cursor := c + op_size
+      val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+      val c = _iflush(buf, cursor, 521)
+      val () = _wb(buf, c, 2)
+      val off = $AR.add_g1(c, 1)
+      val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+      val off = $AR.add_g1(off, sz)
+      val () = _wb(buf, off, 5)
+      val off = $AR.add_g1(off, 1)
+      val () = _ctext(buf, off, _txt_class(), 5, 0)
+      val off = $AR.add_g1(off, 5)
+      val () = _wu16le(buf, off, cls_len)
+      val off = $AR.add_g1(off, 2)
+      val () = _ctext(buf, off, cls_text, cls_len, 0)
+      val () = cursor := g0ofg1($AR.add_g1(off, cls_len))
       prval () = fold@(doc)
     in end
   | $W.SetClassName(wid, cls, clen) =>
@@ -816,9 +886,9 @@ fn _write_canvas_id
   (buf: !$A.arr(byte, l, cap), c: int c,
    opc: int v,
    node_id: !$A.borrow(byte, li, ni), id_len: int ni): int(c + 3 + ni) = let
-  val () = $A.write_byte(buf, c, opc)
-  val () = $A.write_u16le(buf, c + 1, id_len)
-  val () = $A.write_borrow(buf, c + 3, node_id, id_len)
+  val () = _wb(buf, c, opc)
+  val () = _wu16le(buf, c + 1, id_len)
+  val () = _cborrow(buf, c + 3, node_id, id_len, 0)
 in c + 3 + id_len end
 
 fn _emit_canvas_str_op
@@ -844,7 +914,7 @@ fn _emit_canvas_str_op_i32
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
-  val () = $A.write_i32(buf, off, v0)
+  val () = _wi32(buf, off, v0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -859,8 +929,8 @@ fn _emit_canvas_str_op_2i32
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
-  val () = $A.write_i32(buf, off, v0)
-  val () = $A.write_i32(buf, off + 4, v1)
+  val () = _wi32(buf, off, v0)
+  val () = _wi32(buf, off + 4, v1)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -875,10 +945,10 @@ fn _emit_canvas_str_op_4i32
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
-  val () = $A.write_i32(buf, off, v0)
-  val () = $A.write_i32(buf, off + 4, v1)
-  val () = $A.write_i32(buf, off + 8, v2)
-  val () = $A.write_i32(buf, off + 12, v3)
+  val () = _wi32(buf, off, v0)
+  val () = _wi32(buf, off + 4, v1)
+  val () = _wi32(buf, off + 8, v2)
+  val () = _wi32(buf, off + 12, v3)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -906,12 +976,12 @@ implement canvas_arc{l}{li}{ni}(doc, node_id, id_len, cx, cy, r, start1000, end1
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 70, node_id, id_len)
-  val () = $A.write_i32(buf, off, cx)
-  val () = $A.write_i32(buf, off + 4, cy)
-  val () = $A.write_i32(buf, off + 8, r)
-  val () = $A.write_i32(buf, off + 12, start1000)
-  val () = $A.write_i32(buf, off + 16, end1000)
-  val () = $A.write_byte(buf, off + 20, $AR.checked_byte(if ccw > 0 then 1 else 0))
+  val () = _wi32(buf, off, cx)
+  val () = _wi32(buf, off + 4, cy)
+  val () = _wi32(buf, off + 8, r)
+  val () = _wi32(buf, off + 12, start1000)
+  val () = _wi32(buf, off + 16, end1000)
+  val () = if ccw > 0 then _wb(buf, off + 20, 1) else _wb(buf, off + 20, 0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -930,10 +1000,10 @@ implement canvas_fill_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 74, node_id, id_len)
-  val () = $A.write_byte(buf, off, $AR.checked_byte(r))
-  val () = $A.write_byte(buf, off + 1, $AR.checked_byte(g))
-  val () = $A.write_byte(buf, off + 2, $AR.checked_byte(b0))
-  val () = $A.write_byte(buf, off + 3, $AR.checked_byte(a))
+  val () = _wb(buf, off, _g1_byte(r))
+  val () = _wb(buf, off + 1, _g1_byte(g))
+  val () = _wb(buf, off + 2, _g1_byte(b0))
+  val () = _wb(buf, off + 3, _g1_byte(a))
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -943,10 +1013,10 @@ implement canvas_stroke_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = le
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 75, node_id, id_len)
-  val () = $A.write_byte(buf, off, $AR.checked_byte(r))
-  val () = $A.write_byte(buf, off + 1, $AR.checked_byte(g))
-  val () = $A.write_byte(buf, off + 2, $AR.checked_byte(b0))
-  val () = $A.write_byte(buf, off + 3, $AR.checked_byte(a))
+  val () = _wb(buf, off, _g1_byte(r))
+  val () = _wb(buf, off + 1, _g1_byte(g))
+  val () = _wb(buf, off + 2, _g1_byte(b0))
+  val () = _wb(buf, off + 3, _g1_byte(a))
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -959,10 +1029,10 @@ implement canvas_fill_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, text
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 77, node_id, id_len)
-  val () = $A.write_i32(buf, off, x)
-  val () = $A.write_i32(buf, off + 4, y)
-  val () = $A.write_u16le(buf, off + 8, text_len)
-  val () = $A.write_text(buf, off + 10, text, text_len)
+  val () = _wi32(buf, off, x)
+  val () = _wi32(buf, off + 4, y)
+  val () = _wu16le(buf, off + 8, text_len)
+  val () = _ctext(buf, off + 10, text, text_len, 0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -972,10 +1042,10 @@ implement canvas_stroke_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, te
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 78, node_id, id_len)
-  val () = $A.write_i32(buf, off, x)
-  val () = $A.write_i32(buf, off + 4, y)
-  val () = $A.write_u16le(buf, off + 8, text_len)
-  val () = $A.write_text(buf, off + 10, text, text_len)
+  val () = _wi32(buf, off, x)
+  val () = _wi32(buf, off + 4, y)
+  val () = _wu16le(buf, off + 8, text_len)
+  val () = _ctext(buf, off + 10, text, text_len, 0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
@@ -985,8 +1055,8 @@ implement canvas_set_font{l}{li}{ni}{fl}(doc, node_id, id_len, font, font_len) =
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 79, node_id, id_len)
-  val () = $A.write_u16le(buf, off, font_len)
-  val () = $A.write_text(buf, off + 2, font, font_len)
+  val () = _wu16le(buf, off, font_len)
+  val () = _ctext(buf, off + 2, font, font_len, 0)
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(doc)
 in end
