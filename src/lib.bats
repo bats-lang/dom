@@ -670,6 +670,18 @@ fn _emit_create_wid
 in end
 
 (* Opcode 3: remove_children with widget_id *)
+fn _emit_remove_children_nid
+  {l:agz}
+  (doc: !doc_vt(l), node_id: int): void = let
+  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val c = _iflush(buf, cursor, 259)
+  val () = _wb(buf, c, 3)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_nid_dispatch(buf, off, node_id, mid, midl)
+  val () = cursor := g0ofg1($AR.add_g1(off, sz))
+  prval () = fold@(doc)
+in end
+
 fn _emit_remove_children_wid
   {l:agz}
   (doc: !doc_vt(l), wid: $W.widget_id): void = let
@@ -810,6 +822,9 @@ fn _emit_widget
 implement create_document{nt}{ni}(mount_tag, tag_len, mount_id, id_len) = let
   val buf = $A.alloc<byte>(_CAP)
   val doc = doc_mk(buf, 0, 1, mount_id, id_len)
+  (* Clear the mount point before creating the root element.
+     This removes any loading spinner or other pre-WASM content. *)
+  val () = _emit_remove_children_nid(doc, ~1)
   val () = _emit_create_element(doc, 0, ~1, mount_tag, tag_len)
   val () = _emit_set_attr(doc, 0, _txt_id(), 2, mount_id, id_len)
   val () = _flush(doc)
