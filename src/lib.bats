@@ -17,10 +17,12 @@ staload "wasm.bats-packages.dev/bridge/src/dom.bats"
    Document: owns mount point, CSS rules, node ID counter
    ============================================================ *)
 
+(* The cursor (second field) is the number of bytes queued in the
+   buffer; its bound is part of the type. *)
 #pub datavtype document(l:addr) =
-  | {l:agz}{nm:pos | nm < 256} doc_mk(l) of (
+  | {l:agz}{nm:pos | nm < 256}{c:nat | c <= DOM_BUF_CAP} doc_mk(l) of (
       $A.arr(byte, l, DOM_BUF_CAP),
-      int,
+      int c,
       int,
       $A.text(nm),
       int nm
@@ -493,17 +495,9 @@ fn _auto_flush
   (doc: !doc_vt(l), needed: int needed)
   : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
   val+ @doc_mk(buf, cursor, _, _, _) = doc
-  val c0 = g1ofg0(cursor)
+  val c0 = cursor
 in
-  if c0 < 0 then let
-    val () = cursor := 0
-    prval () = fold@(doc)
-  in 0 end
-  else if c0 > _CAP then let
-    val () = cursor := 0
-    prval () = fold@(doc)
-  in 0 end
-  else if c0 + needed > _CAP then let
+  if c0 + needed > _CAP then let
     val () = _flush_arr(buf, c0)
     val () = cursor := 0
     prval () = fold@(doc)
@@ -515,22 +509,17 @@ end
 
 (* Inline flush: operates on unfolded buf+cursor, returns g1 cursor *)
 fn _iflush
-  {l:agz}{needed:pos | needed <= DOM_BUF_CAP}
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), cursor: &int >> int, needed: int(needed))
+  {l:agz}{c0:nat | c0 <= DOM_BUF_CAP}{needed:pos | needed <= DOM_BUF_CAP}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP),
+   cursor: &int(c0) >> [c1:nat | c1 <= DOM_BUF_CAP] int(c1), needed: int(needed))
   : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
-  val c0 = g1ofg0(cursor)
+  val c = cursor
 in
-  if c0 < 0 then let
+  if c + needed > _CAP then let
+    val () = if c > 0 then _flush_arr(buf, c)
     val () = cursor := 0
   in 0 end
-  else if c0 > _CAP then let
-    val () = cursor := 0
-  in 0 end
-  else if c0 + needed > _CAP then let
-    val () = if c0 > 0 then _flush_arr(buf, c0)
-    val () = cursor := 0
-  in 0 end
-  else c0
+  else c
 end
 
 (* ---- Node ID helpers ----
@@ -620,7 +609,7 @@ fn _emit_create_element
   val () = _wb(buf, off, tag_len)
   val off = $AR.add_g1(off, 1)
   val () = _ctext(buf, off, tag, tag_len, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, tag_len))
+  val () = cursor := $AR.add_g1(off, tag_len)
   prval () = fold@(doc)
 in end
 
@@ -643,7 +632,7 @@ fn _emit_set_attr
   val () = _wu16le(buf, off, value_len)
   val off = $AR.add_g1(off, 2)
   val () = _ctext(buf, off, attr_value, value_len, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, value_len))
+  val () = cursor := $AR.add_g1(off, value_len)
   prval () = fold@(doc)
 in end
 
@@ -665,7 +654,7 @@ fn _emit_create_wid
   val () = _wb(buf, off, tag_len)
   val off = $AR.add_g1(off, 1)
   val () = _ctext(buf, off, tag, tag_len, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, tag_len))
+  val () = cursor := $AR.add_g1(off, tag_len)
   prval () = fold@(doc)
 in end
 
@@ -678,7 +667,7 @@ fn _emit_remove_children_nid
   val () = _wb(buf, c, 3)
   val off = $AR.add_g1(c, 1)
   val sz = _write_nid_dispatch(buf, off, node_id, mid, midl)
-  val () = cursor := g0ofg1($AR.add_g1(off, sz))
+  val () = cursor := $AR.add_g1(off, sz)
   prval () = fold@(doc)
 in end
 
@@ -690,7 +679,7 @@ fn _emit_remove_children_wid
   val () = _wb(buf, c, 3)
   val off = $AR.add_g1(c, 1)
   val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
-  val () = cursor := g0ofg1($AR.add_g1(off, sz))
+  val () = cursor := $AR.add_g1(off, sz)
   prval () = fold@(doc)
 in end
 
@@ -703,7 +692,7 @@ fn _emit_remove_child_wid
   val () = _wb(buf, c, 5)
   val off = $AR.add_g1(c, 1)
   val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
-  val () = cursor := g0ofg1($AR.add_g1(off, sz))
+  val () = cursor := $AR.add_g1(off, sz)
   prval () = fold@(doc)
 in end
 
@@ -723,7 +712,7 @@ fn _emit_set_attr_empty_wid
   val () = _ctext(buf, off, attr_name, name_len, 0)
   val off = $AR.add_g1(off, name_len)
   val () = _wu16le(buf, off, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, 2))
+  val () = cursor := $AR.add_g1(off, 2)
   prval () = fold@(doc)
 in end
 
@@ -741,15 +730,14 @@ fn _emit_remove_attr_wid
   val () = _wb(buf, off, name_len)
   val off = $AR.add_g1(off, 1)
   val () = _ctext(buf, off, attr_name, name_len, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, name_len))
+  val () = cursor := $AR.add_g1(off, name_len)
   prval () = fold@(doc)
 in end
 
 fn _flush{l:agz}(doc: !doc_vt(l)): void = let
   val+ @doc_mk(buf, cursor, _, _, _) = doc
-  val c = g1ofg0(cursor)
-  val () = if c > 0 then
-    if c <= _CAP then _flush_arr(buf, c)
+  val c = cursor
+  val () = if c > 0 then _flush_arr(buf, c)
   val () = cursor := 0
   prval () = fold@(doc)
 in end
@@ -774,7 +762,7 @@ fn _emit_set_attr_text_wid{l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
   val () = _wu16le(buf, off, val_len)
   val off = $AR.add_g1(off, 2)
   val () = _ctext(buf, off, attr_val, val_len, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, val_len))
+  val () = cursor := $AR.add_g1(off, val_len)
   prval () = fold@(doc)
 in end
 
@@ -791,7 +779,7 @@ fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
   val () = _wu16le(buf, off, tlen)
   val off = $AR.add_g1(off, 2)
   val () = _ctext(buf, off, t, tlen, 0)
-  val () = cursor := g0ofg1($AR.add_g1(off, tlen))
+  val () = cursor := $AR.add_g1(off, tlen)
   prval () = fold@(doc)
 in end
 
@@ -855,7 +843,7 @@ implement apply{l}(doc, d) = let
       val () = _wu16le(buf, off, cls_len)
       val off = $AR.add_g1(off, 2)
       val () = _ctext(buf, off, cls_text, cls_len, 0)
-      val () = cursor := g0ofg1($AR.add_g1(off, cls_len))
+      val () = cursor := $AR.add_g1(off, cls_len)
       prval () = fold@(doc)
     in end
   | $W.SetClassName(wid, cls, clen) =>
@@ -915,7 +903,7 @@ fn _emit_canvas_str_op
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val _ = _write_canvas_id(buf, c, opc, node_id, id_len)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -930,7 +918,7 @@ fn _emit_canvas_str_op_i32
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = _wi32(buf, off, v0)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -946,7 +934,7 @@ fn _emit_canvas_str_op_2i32
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = _wi32(buf, off, v0)
   val () = _wi32(buf, off + 4, v1)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -964,7 +952,7 @@ fn _emit_canvas_str_op_4i32
   val () = _wi32(buf, off + 4, v1)
   val () = _wi32(buf, off + 8, v2)
   val () = _wi32(buf, off + 12, v3)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -997,7 +985,7 @@ implement canvas_arc{l}{li}{ni}(doc, node_id, id_len, cx, cy, r, start1000, end1
   val () = _wi32(buf, off + 12, start1000)
   val () = _wi32(buf, off + 16, end1000)
   val () = if ccw > 0 then _wb(buf, off + 20, 1) else _wb(buf, off + 20, 0)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -1019,7 +1007,7 @@ implement canvas_fill_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
   val () = _wb(buf, off + 1, _g1_byte(g))
   val () = _wb(buf, off + 2, _g1_byte(b0))
   val () = _wb(buf, off + 3, _g1_byte(a))
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -1032,7 +1020,7 @@ implement canvas_stroke_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = le
   val () = _wb(buf, off + 1, _g1_byte(g))
   val () = _wb(buf, off + 2, _g1_byte(b0))
   val () = _wb(buf, off + 3, _g1_byte(a))
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -1048,7 +1036,7 @@ implement canvas_fill_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, text
   val () = _wi32(buf, off + 4, y)
   val () = _wu16le(buf, off + 8, text_len)
   val () = _ctext(buf, off + 10, text, text_len, 0)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -1061,7 +1049,7 @@ implement canvas_stroke_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, te
   val () = _wi32(buf, off + 4, y)
   val () = _wu16le(buf, off + 8, text_len)
   val () = _ctext(buf, off + 10, text, text_len, 0)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
@@ -1072,7 +1060,7 @@ implement canvas_set_font{l}{li}{ni}{fl}(doc, node_id, id_len, font, font_len) =
   val off = _write_canvas_id(buf, c, 79, node_id, id_len)
   val () = _wu16le(buf, off, font_len)
   val () = _ctext(buf, off + 2, font, font_len, 0)
-  val () = cursor := g0ofg1(c + op_size)
+  val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
