@@ -52,9 +52,38 @@ vtypedef doc_vt(l:addr) = document(l)
   {l:agz}
   (doc: !document(l), dl: $W.diff_list): void
 
+(* Flushes what is still queued, then frees the document *)
 #pub fun destroy
   {l:agz}
   (doc: document(l)): void
+
+(* Element, text and attribute operations (and removing children) whose ids and text are held in
+   borrows: they are copied into the buffer, and nothing is allocated
+   (where a widget_id, a diff and a text built from bytes are allocated
+   and never freed). Names are string literals. *)
+
+(* A new element <tag id=id> as the last child of the element parent *)
+#pub fun add_element
+  {l:agz}{lp,li:agz}{np,ni:pos | np < 256; ni < 256}{tl:pos | tl < 256}
+  (doc: !document(l), parent: !$A.borrow(byte, lp, np), plen: int np,
+   id: !$A.borrow(byte, li, ni), ilen: int ni, tag: string tl): void
+
+(* Removes every child of element id *)
+#pub fun remove_children
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni): void
+
+(* The text of element id: t[off, off + len) *)
+#pub fun set_text
+  {l:agz}{li,lt:agz}{ni:pos | ni < 256}{nt:pos}{o,k:nat | o + k <= nt; k < 65536}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni,
+   t: !$A.borrow(byte, lt, nt), off: int o, len: int k): void
+
+(* Attribute name of element id: v[off, off + len) *)
+#pub fun set_attr
+  {l:agz}{li,lv:agz}{ni:pos | ni < 256}{nl:pos | nl < 256}{nv:pos}{o,k:nat | o + k <= nv; k < 65536}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: string nl,
+   v: !$A.borrow(byte, lv, nv), off: int o, len: int k): void
 
 (* ============================================================
    Canvas API — emit canvas opcodes into the diff buffer
@@ -167,161 +196,161 @@ vtypedef doc_vt(l:addr) = document(l)
    ============================================================ *)
 
 fn _txt_hidden(): $A.text(6) =
-  let var c = @[char][6]('h', 'i', 'd', 'd', 'e', 'n') in $S.text_of_chars(c, 6) end
+  $A.text_lit("hidden")
 fn _txt_class(): $A.text(5) =
-  let var c = @[char][5]('c', 'l', 'a', 's', 's') in $S.text_of_chars(c, 5) end
+  $A.text_lit("class")
 fn _txt_tabindex(): $A.text(8) =
-  let var c = @[char][8]('t', 'a', 'b', 'i', 'n', 'd', 'e', 'x') in $S.text_of_chars(c, 8) end
+  $A.text_lit("tabindex")
 fn _txt_title(): $A.text(5) =
-  let var c = @[char][5]('t', 'i', 't', 'l', 'e') in $S.text_of_chars(c, 5) end
+  $A.text_lit("title")
 fn _txt_id(): $A.text(2) =
-  let var c = @[char][2]('i', 'd') in $S.text_of_chars(c, 2) end
+  $A.text_lit("id")
 fn _txt_style(): $A.text(5) =
-  let var c = @[char][5]('s', 't', 'y', 'l', 'e') in $S.text_of_chars(c, 5) end
+  $A.text_lit("style")
 
 fn _tag_div(): $A.text(3) =
-  let var c = @[char][3]('d', 'i', 'v') in $S.text_of_chars(c, 3) end
+  $A.text_lit("div")
 fn _tag_span(): $A.text(4) =
-  let var c = @[char][4]('s', 'p', 'a', 'n') in $S.text_of_chars(c, 4) end
+  $A.text_lit("span")
 fn _tag_p(): $A.text(1) =
-  let var c = @[char][1]('p') in $S.text_of_chars(c, 1) end
+  $A.text_lit("p")
 fn _tag_br(): $A.text(2) =
-  let var c = @[char][2]('b', 'r') in $S.text_of_chars(c, 2) end
+  $A.text_lit("br")
 fn _tag_hr(): $A.text(2) =
-  let var c = @[char][2]('h', 'r') in $S.text_of_chars(c, 2) end
+  $A.text_lit("hr")
 fn _tag_ul(): $A.text(2) =
-  let var c = @[char][2]('u', 'l') in $S.text_of_chars(c, 2) end
+  $A.text_lit("ul")
 fn _tag_li(): $A.text(2) =
-  let var c = @[char][2]('l', 'i') in $S.text_of_chars(c, 2) end
+  $A.text_lit("li")
 fn _tag_a(): $A.text(1) =
-  let var c = @[char][1]('a') in $S.text_of_chars(c, 1) end
+  $A.text_lit("a")
 fn _tag_img(): $A.text(3) =
-  let var c = @[char][3]('i', 'm', 'g') in $S.text_of_chars(c, 3) end
+  $A.text_lit("img")
 fn _tag_input(): $A.text(5) =
-  let var c = @[char][5]('i', 'n', 'p', 'u', 't') in $S.text_of_chars(c, 5) end
+  $A.text_lit("input")
 
 fn _tag_style(): $A.text(5) =
-  let var c = @[char][5]('s', 't', 'y', 'l', 'e') in $S.text_of_chars(c, 5) end
+  $A.text_lit("style")
 fn _tag_h1(): $A.text(2) =
-  let var c = @[char][2]('h', '1') in $S.text_of_chars(c, 2) end
+  $A.text_lit("h1")
 fn _tag_h2(): $A.text(2) =
-  let var c = @[char][2]('h', '2') in $S.text_of_chars(c, 2) end
+  $A.text_lit("h2")
 fn _tag_h3(): $A.text(2) =
-  let var c = @[char][2]('h', '3') in $S.text_of_chars(c, 2) end
+  $A.text_lit("h3")
 fn _tag_h4(): $A.text(2) =
-  let var c = @[char][2]('h', '4') in $S.text_of_chars(c, 2) end
+  $A.text_lit("h4")
 fn _tag_h5(): $A.text(2) =
-  let var c = @[char][2]('h', '5') in $S.text_of_chars(c, 2) end
+  $A.text_lit("h5")
 fn _tag_h6(): $A.text(2) =
-  let var c = @[char][2]('h', '6') in $S.text_of_chars(c, 2) end
+  $A.text_lit("h6")
 fn _tag_section(): $A.text(7) =
-  let var c = @[char][7]('s', 'e', 'c', 't', 'i', 'o', 'n') in $S.text_of_chars(c, 7) end
+  $A.text_lit("section")
 fn _tag_article(): $A.text(7) =
-  let var c = @[char][7]('a', 'r', 't', 'i', 'c', 'l', 'e') in $S.text_of_chars(c, 7) end
+  $A.text_lit("article")
 fn _tag_header(): $A.text(6) =
-  let var c = @[char][6]('h', 'e', 'a', 'd', 'e', 'r') in $S.text_of_chars(c, 6) end
+  $A.text_lit("header")
 fn _tag_footer(): $A.text(6) =
-  let var c = @[char][6]('f', 'o', 'o', 't', 'e', 'r') in $S.text_of_chars(c, 6) end
+  $A.text_lit("footer")
 fn _tag_main(): $A.text(4) =
-  let var c = @[char][4]('m', 'a', 'i', 'n') in $S.text_of_chars(c, 4) end
+  $A.text_lit("main")
 fn _tag_nav(): $A.text(3) =
-  let var c = @[char][3]('n', 'a', 'v') in $S.text_of_chars(c, 3) end
+  $A.text_lit("nav")
 fn _tag_aside(): $A.text(5) =
-  let var c = @[char][5]('a', 's', 'i', 'd', 'e') in $S.text_of_chars(c, 5) end
+  $A.text_lit("aside")
 fn _tag_blockquote(): $A.text(10) =
-  let var c = @[char][10]('b', 'l', 'o', 'c', 'k', 'q', 'u', 'o', 't', 'e') in $S.text_of_chars(c, 10) end
+  $A.text_lit("blockquote")
 fn _tag_pre(): $A.text(3) =
-  let var c = @[char][3]('p', 'r', 'e') in $S.text_of_chars(c, 3) end
+  $A.text_lit("pre")
 fn _tag_code(): $A.text(4) =
-  let var c = @[char][4]('c', 'o', 'd', 'e') in $S.text_of_chars(c, 4) end
+  $A.text_lit("code")
 fn _tag_figure(): $A.text(6) =
-  let var c = @[char][6]('f', 'i', 'g', 'u', 'r', 'e') in $S.text_of_chars(c, 6) end
+  $A.text_lit("figure")
 fn _tag_figcaption(): $A.text(10) =
-  let var c = @[char][10]('f', 'i', 'g', 'c', 'a', 'p', 't', 'i', 'o', 'n') in $S.text_of_chars(c, 10) end
+  $A.text_lit("figcaption")
 fn _tag_strong(): $A.text(6) =
-  let var c = @[char][6]('s', 't', 'r', 'o', 'n', 'g') in $S.text_of_chars(c, 6) end
+  $A.text_lit("strong")
 fn _tag_em(): $A.text(2) =
-  let var c = @[char][2]('e', 'm') in $S.text_of_chars(c, 2) end
+  $A.text_lit("em")
 fn _tag_small(): $A.text(5) =
-  let var c = @[char][5]('s', 'm', 'a', 'l', 'l') in $S.text_of_chars(c, 5) end
+  $A.text_lit("small")
 fn _tag_mark(): $A.text(4) =
-  let var c = @[char][4]('m', 'a', 'r', 'k') in $S.text_of_chars(c, 4) end
+  $A.text_lit("mark")
 fn _tag_del(): $A.text(3) =
-  let var c = @[char][3]('d', 'e', 'l') in $S.text_of_chars(c, 3) end
+  $A.text_lit("del")
 fn _tag_ins(): $A.text(3) =
-  let var c = @[char][3]('i', 'n', 's') in $S.text_of_chars(c, 3) end
+  $A.text_lit("ins")
 fn _tag_sub(): $A.text(3) =
-  let var c = @[char][3]('s', 'u', 'b') in $S.text_of_chars(c, 3) end
+  $A.text_lit("sub")
 fn _tag_sup(): $A.text(3) =
-  let var c = @[char][3]('s', 'u', 'p') in $S.text_of_chars(c, 3) end
+  $A.text_lit("sup")
 fn _tag_ol(): $A.text(2) =
-  let var c = @[char][2]('o', 'l') in $S.text_of_chars(c, 2) end
+  $A.text_lit("ol")
 fn _tag_button(): $A.text(6) =
-  let var c = @[char][6]('b', 'u', 't', 't', 'o', 'n') in $S.text_of_chars(c, 6) end
+  $A.text_lit("button")
 fn _tag_label(): $A.text(5) =
-  let var c = @[char][5]('l', 'a', 'b', 'e', 'l') in $S.text_of_chars(c, 5) end
+  $A.text_lit("label")
 fn _tag_details(): $A.text(7) =
-  let var c = @[char][7]('d', 'e', 't', 'a', 'i', 'l', 's') in $S.text_of_chars(c, 7) end
+  $A.text_lit("details")
 fn _tag_summary(): $A.text(7) =
-  let var c = @[char][7]('s', 'u', 'm', 'm', 'a', 'r', 'y') in $S.text_of_chars(c, 7) end
+  $A.text_lit("summary")
 fn _tag_form(): $A.text(4) =
-  let var c = @[char][4]('f', 'o', 'r', 'm') in $S.text_of_chars(c, 4) end
+  $A.text_lit("form")
 fn _tag_fieldset(): $A.text(8) =
-  let var c = @[char][8]('f', 'i', 'e', 'l', 'd', 's', 'e', 't') in $S.text_of_chars(c, 8) end
+  $A.text_lit("fieldset")
 fn _tag_legend(): $A.text(6) =
-  let var c = @[char][6]('l', 'e', 'g', 'e', 'n', 'd') in $S.text_of_chars(c, 6) end
+  $A.text_lit("legend")
 fn _tag_select(): $A.text(6) =
-  let var c = @[char][6]('s', 'e', 'l', 'e', 'c', 't') in $S.text_of_chars(c, 6) end
+  $A.text_lit("select")
 fn _tag_optgroup(): $A.text(8) =
-  let var c = @[char][8]('o', 'p', 't', 'g', 'r', 'o', 'u', 'p') in $S.text_of_chars(c, 8) end
+  $A.text_lit("optgroup")
 fn _tag_option(): $A.text(6) =
-  let var c = @[char][6]('o', 'p', 't', 'i', 'o', 'n') in $S.text_of_chars(c, 6) end
+  $A.text_lit("option")
 fn _tag_textarea(): $A.text(8) =
-  let var c = @[char][8]('t', 'e', 'x', 't', 'a', 'r', 'e', 'a') in $S.text_of_chars(c, 8) end
+  $A.text_lit("textarea")
 fn _tag_table(): $A.text(5) =
-  let var c = @[char][5]('t', 'a', 'b', 'l', 'e') in $S.text_of_chars(c, 5) end
+  $A.text_lit("table")
 fn _tag_caption(): $A.text(7) =
-  let var c = @[char][7]('c', 'a', 'p', 't', 'i', 'o', 'n') in $S.text_of_chars(c, 7) end
+  $A.text_lit("caption")
 fn _tag_thead(): $A.text(5) =
-  let var c = @[char][5]('t', 'h', 'e', 'a', 'd') in $S.text_of_chars(c, 5) end
+  $A.text_lit("thead")
 fn _tag_tbody(): $A.text(5) =
-  let var c = @[char][5]('t', 'b', 'o', 'd', 'y') in $S.text_of_chars(c, 5) end
+  $A.text_lit("tbody")
 fn _tag_tfoot(): $A.text(5) =
-  let var c = @[char][5]('t', 'f', 'o', 'o', 't') in $S.text_of_chars(c, 5) end
+  $A.text_lit("tfoot")
 fn _tag_tr(): $A.text(2) =
-  let var c = @[char][2]('t', 'r') in $S.text_of_chars(c, 2) end
+  $A.text_lit("tr")
 fn _tag_th(): $A.text(2) =
-  let var c = @[char][2]('t', 'h') in $S.text_of_chars(c, 2) end
+  $A.text_lit("th")
 fn _tag_td(): $A.text(2) =
-  let var c = @[char][2]('t', 'd') in $S.text_of_chars(c, 2) end
+  $A.text_lit("td")
 fn _tag_video(): $A.text(5) =
-  let var c = @[char][5]('v', 'i', 'd', 'e', 'o') in $S.text_of_chars(c, 5) end
+  $A.text_lit("video")
 fn _tag_audio(): $A.text(5) =
-  let var c = @[char][5]('a', 'u', 'd', 'i', 'o') in $S.text_of_chars(c, 5) end
+  $A.text_lit("audio")
 fn _tag_picture(): $A.text(7) =
-  let var c = @[char][7]('p', 'i', 'c', 't', 'u', 'r', 'e') in $S.text_of_chars(c, 7) end
+  $A.text_lit("picture")
 
 fn _txt_type(): $A.text(4) =
-  let var c = @[char][4]('t', 'y', 'p', 'e') in $S.text_of_chars(c, 4) end
+  $A.text_lit("type")
 
 fn _input_type_text(it: $W.input_type): [m:pos | m < 256] @($A.text(m), int m) =
   case+ it of
-  | $W.InputText() => let var c = @[char][4]('t', 'e', 'x', 't') in @($S.text_of_chars(c, 4), 4) end
-  | $W.InputPassword() => let var c = @[char][8]('p', 'a', 's', 's', 'w', 'o', 'r', 'd') in @($S.text_of_chars(c, 8), 8) end
-  | $W.InputEmail() => let var c = @[char][5]('e', 'm', 'a', 'i', 'l') in @($S.text_of_chars(c, 5), 5) end
-  | $W.InputNumber() => let var c = @[char][6]('n', 'u', 'm', 'b', 'e', 'r') in @($S.text_of_chars(c, 6), 6) end
-  | $W.InputCheckbox() => let var c = @[char][8]('c', 'h', 'e', 'c', 'k', 'b', 'o', 'x') in @($S.text_of_chars(c, 8), 8) end
-  | $W.InputRadio() => let var c = @[char][5]('r', 'a', 'd', 'i', 'o') in @($S.text_of_chars(c, 5), 5) end
-  | $W.InputRange() => let var c = @[char][5]('r', 'a', 'n', 'g', 'e') in @($S.text_of_chars(c, 5), 5) end
-  | $W.InputDate() => let var c = @[char][4]('d', 'a', 't', 'e') in @($S.text_of_chars(c, 4), 4) end
-  | $W.InputTime() => let var c = @[char][4]('t', 'i', 'm', 'e') in @($S.text_of_chars(c, 4), 4) end
-  | $W.InputDatetimeLocal() => let var c = @[char][14]('d', 'a', 't', 'e', 't', 'i', 'm', 'e', '-', 'l', 'o', 'c', 'a', 'l') in @($S.text_of_chars(c, 14), 14) end
-  | $W.InputFile() => let var c = @[char][4]('f', 'i', 'l', 'e') in @($S.text_of_chars(c, 4), 4) end
-  | $W.InputColor() => let var c = @[char][5]('c', 'o', 'l', 'o', 'r') in @($S.text_of_chars(c, 5), 5) end
-  | $W.InputHidden() => let var c = @[char][6]('h', 'i', 'd', 'd', 'e', 'n') in @($S.text_of_chars(c, 6), 6) end
-  | $W.InputSubmit() => let var c = @[char][6]('s', 'u', 'b', 'm', 'i', 't') in @($S.text_of_chars(c, 6), 6) end
-  | $W.InputReset() => let var c = @[char][5]('r', 'e', 's', 'e', 't') in @($S.text_of_chars(c, 5), 5) end
-  | $W.InputButton() => let var c = @[char][6]('b', 'u', 't', 't', 'o', 'n') in @($S.text_of_chars(c, 6), 6) end
+  | $W.InputText() => @($A.text_lit("text"), 4)
+  | $W.InputPassword() => @($A.text_lit("password"), 8)
+  | $W.InputEmail() => @($A.text_lit("email"), 5)
+  | $W.InputNumber() => @($A.text_lit("number"), 6)
+  | $W.InputCheckbox() => @($A.text_lit("checkbox"), 8)
+  | $W.InputRadio() => @($A.text_lit("radio"), 5)
+  | $W.InputRange() => @($A.text_lit("range"), 5)
+  | $W.InputDate() => @($A.text_lit("date"), 4)
+  | $W.InputTime() => @($A.text_lit("time"), 4)
+  | $W.InputDatetimeLocal() => @($A.text_lit("datetime-local"), 14)
+  | $W.InputFile() => @($A.text_lit("file"), 4)
+  | $W.InputColor() => @($A.text_lit("color"), 5)
+  | $W.InputHidden() => @($A.text_lit("hidden"), 6)
+  | $W.InputSubmit() => @($A.text_lit("submit"), 6)
+  | $W.InputReset() => @($A.text_lit("reset"), 5)
+  | $W.InputButton() => @($A.text_lit("button"), 6)
 
 fn _tag_default(): $A.text(3) = _tag_div()
 
@@ -385,11 +414,11 @@ fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
   | $W.Style() => @(_tag_style(), 5)
 
 fn _tag_wbr(): $A.text(3) =
-  let var c = @[char][3]('w', 'b', 'r') in $S.text_of_chars(c, 3) end
+  $A.text_lit("wbr")
 fn _tag_source(): $A.text(6) =
-  let var c = @[char][6]('s', 'o', 'u', 'r', 'c', 'e') in $S.text_of_chars(c, 6) end
+  $A.text_lit("source")
 fn _tag_track(): $A.text(5) =
-  let var c = @[char][5]('t', 'r', 'a', 'c', 'k') in $S.text_of_chars(c, 5) end
+  $A.text_lit("track")
 
 fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
   case+ v of
@@ -1018,7 +1047,10 @@ implement apply_list{l}(doc, dl) = let
       in loop(doc, rest) end
 in loop(doc, dl) end
 
+(* What is still queued (the borrow operations, canvas operations) is
+   flushed first *)
 implement destroy{l}(doc) = let
+  val () = _flush(doc)
   val+ ~doc_mk(buf, _, _, _) = doc
 in $A.free<byte>(buf) end
 
@@ -1227,5 +1259,69 @@ implement canvas_rotate{l}{li}{ni}(doc, node_id, id_len, angle1000) =
 
 implement canvas_scale{l}{li}{ni}(doc, node_id, id_len, sx1000, sy1000) =
   _emit_canvas_str_op_2i32(doc, 84, node_id, id_len, sx1000, sy1000)
+
+
+(* src[o, o + k) to dst[off, off + k) *)
+fun _cregion {ld,ls:agz}{n,m:pos}{off,o,k:nat | o + k <= m; off + k <= n}{i:nat | i <= k} .<k - i>.
+  (dst: !$A.arr(byte, ld, n), off: int off, src: !$A.borrow(byte, ls, m), o: int o, k: int k, i: int i): void =
+  if i >= k then ()
+  else let
+    val () = $A.set<byte>(dst, off + i, $A.read<byte>(src, o + i))
+  in _cregion(dst, off, src, o, k, i + 1) end
+
+(* [u16 length][bytes] of the id b[0, n) at off; the offset after it *)
+fn _wid_borrow {l:agz}{lb:agz}{n:pos | n < 256}{off:nat | off + 2 + n <= DOM_BUF_CAP}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int off, b: !$A.borrow(byte, lb, n), n: int n): int(off + 2 + n) = let
+  val () = _wu16le(buf, off, n)
+  val () = _cborrow(buf, off + 2, b, n, 0)
+in off + 2 + n end
+
+implement add_element{l}{lp,li}{np,ni}{tl}(doc, parent, plen, id, ilen, tag) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 771)
+  val () = _wb(buf, c, 4)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val off = _wid_borrow(buf, off, parent, plen)
+  val tlen = g1u2i(string1_length(tag))
+  val () = _wb(buf, off, tlen)
+  val () = _cstr(buf, off + 1, tag, tlen, 0)
+  val () = cursor := off + 1 + tlen
+  prval () = fold@(doc)
+in end
+
+implement remove_children{l}{li}{ni}(doc, id, ilen) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 259)
+  val () = _wb(buf, c, 3)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val () = cursor := off
+  prval () = fold@(doc)
+in end
+
+implement set_text{l}{li,lt}{ni}{nt}{o,k}(doc, id, ilen, t, off0, len) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 65795)
+  val () = _wb(buf, c, 1)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val () = _wu16le(buf, off, len)
+  val () = _cregion(buf, off + 2, t, off0, len, 0)
+  val () = cursor := off + 2 + len
+  prval () = fold@(doc)
+in end
+
+implement set_attr{l}{li,lv}{ni}{nl}{nv}{o,k}(doc, id, ilen, name, v, off0, len) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 66051)
+  val () = _wb(buf, c, 2)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val nlen = g1u2i(string1_length(name))
+  val () = _wb(buf, off, nlen)
+  val () = _cstr(buf, off + 1, name, nlen, 0)
+  val off = off + 1 + nlen
+  val () = _wu16le(buf, off, len)
+  val () = _cregion(buf, off + 2, v, off0, len, 0)
+  val () = cursor := off + 2 + len
+  prval () = fold@(doc)
+in end
 
 end (* local *)

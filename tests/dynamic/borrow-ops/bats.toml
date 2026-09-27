@@ -1,0 +1,10 @@
+[package]
+name = "borrow-ops"
+kind = "bin"
+
+[dependencies]
+"array" = ""
+"pwa" = ""
+"str" = ""
+"widget" = ""
+"wasm.bats-packages.dev/dom" = ""
