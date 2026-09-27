@@ -1,0 +1,10 @@
+[package]
+name = "tree"
+kind = "bin"
+
+[dependencies]
+"array" = ""
+"pwa" = ""
+"str" = ""
+"widget" = ""
+"wasm.bats-packages.dev/dom" = ""
