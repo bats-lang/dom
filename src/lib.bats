@@ -675,7 +675,7 @@ fn _emit_widget
         | $W.Void(v) => _void_tag(v)
       ): [m:pos | m < 256] @($A.text(m), int m)
       val () = _emit_create_wid(doc, wid, parent_wid, tag, tlen)
-      val () = (if hidden > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6) else ())
+      val () = (if hidden then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6) else ())
       val () = (case+ top of
         | $W.Void($W.HtmlInput(it, _, _, _, _, _)) => let
             val @(tv, tvl) = _input_type_text(it)
@@ -707,7 +707,7 @@ implement apply{l}(doc, d) = let
   | $W.RemoveChild(_, child_wid) =>
       _emit_remove_child_wid(doc, child_wid)
   | $W.SetHidden(wid, h) =>
-      if h > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
+      if h then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
       else _emit_remove_attr_wid(doc, wid, _txt_hidden(), 6)
   | $W.SetClass(wid, _, cls_text, cls_len) => let
       val+ @doc_mk(buf, cursor, mid, midl) = doc
