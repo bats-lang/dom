@@ -646,13 +646,14 @@ fn _emit_set_attr_text_wid{l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
   prval () = fold@(doc)
 in end
 
-(* Opcode 1: SET_TEXT with text value, widget_id target *)
-fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
-  (doc: !doc_vt(l), wid: $W.widget_id,
+(* Opcode o (1: SET_TEXT, the element's whole text; 6: APPEND_TEXT, a
+   text node after its children), with text value, widget_id target *)
+fn _emit_text_op_wid{l:agz}{o:nat | o < 256}{tl:pos | tl < 65536}
+  (doc: !doc_vt(l), code: int o, wid: $W.widget_id,
    t: $A.text(tl), tlen: int tl): void = let
   val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 65795)
-  val () = _wb(buf, c, 1)
+  val () = _wb(buf, c, code)
   val off = $AR.add_g1(c, 1)
   val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
   val off = $AR.add_g1(off, sz)
@@ -663,25 +664,295 @@ fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
   prval () = fold@(doc)
 in end
 
-(* Emit a widget using widget_id for wire IDs *)
-fn _emit_widget
-  {l:agz}
-  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget): void =
+fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
+  (doc: !doc_vt(l), wid: $W.widget_id,
+   t: $A.text(tl), tlen: int tl): void =
+  _emit_text_op_wid(doc, 1, wid, t, tlen)
+
+(* ---- Attributes named by string literals ---- *)
+
+fun _cstr {l:agz}{n:pos}{off:nat}{sn:nat | off + sn <= n}{k:nat | k <= sn} .<sn-k>.
+  (buf: !$A.arr(byte, l, n), off: int(off), s: string sn, sn: int(sn), k: int(k)): void =
+  if $AR.gte_g1(k, sn) then ()
+  else let
+    val () = $A.set<byte>(buf, $AR.add_g1(off, k), $A.int2byte($AR.byte_of_char(string_get_at(s, k))))
+  in _cstr(buf, off, s, sn, $AR.add_g1(k, 1)) end
+
+(* Writes [op][node id][u8 name length][name] at c; the offset after it *)
+fn _attr_head
+  {l:agz}{c:nat | c + 514 <= DOM_BUF_CAP}{o:nat | o < 256}
+  {nm:pos | nm < 256}{nl:pos | nl < 256}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), c: int c, code: int o,
+   wid: $W.widget_id, mid: $A.text(nm), midl: int nm, name: string nl)
+  : [r:nat | r <= c + 514] int r = let
+  val () = _wb(buf, c, code)
+  val off = $AR.add_g1(c, 1)
+  val sz = _write_wid_dispatch(buf, off, wid, mid, midl)
+  val off = $AR.add_g1(off, sz)
+  val nlen = g1u2i(string1_length(name))
+  val () = _wb(buf, off, nlen)
+  val off = $AR.add_g1(off, 1)
+  val () = _cstr(buf, off, name, nlen, 0)
+in $AR.add_g1(off, nlen) end
+
+(* Opcode 2: name = v (a literal; "" for a boolean attribute) *)
+fn _attr_lit {l:agz}{nl:pos | nl < 256}{vl:nat | vl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, v: string vl): void = let
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val off = _attr_head(buf, c, 2, wid, mid, midl, name)
+  val vlen = g1u2i(string1_length(v))
+  val () = _wu16le(buf, off, vlen)
+  val () = _cstr(buf, $AR.add_g1(off, 2), v, vlen, 0)
+  val () = cursor := $AR.add_g1(off, 2 + vlen)
+  prval () = fold@(doc)
+in end
+
+(* Opcode 2: name = t[0, n) *)
+fn _attr_text {l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, t: $A.text(vl), vlen: int vl): void = let
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val off = _attr_head(buf, c, 2, wid, mid, midl, name)
+  val () = _wu16le(buf, off, vlen)
+  val () = _ctext(buf, $AR.add_g1(off, 2), t, vlen, 0)
+  val () = cursor := $AR.add_g1(off, 2 + vlen)
+  prval () = fold@(doc)
+in end
+
+(* Opcode 2: name = v's decimal digits *)
+fn _attr_int {l:agz}{nl:pos | nl < 256}{v:int}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, v: int v): void = let
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val off = _attr_head(buf, c, 2, wid, mid, midl, name)
+  val r = $S.int_to_str(buf, $AR.add_g1(off, 2), _CAP, v)
+  val () = _wu16le(buf, off, r - off - 2)
+  val () = cursor := r
+  prval () = fold@(doc)
+in end
+
+(* Opcode 7: remove attribute name *)
+fn _attr_unset {l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl): void = let
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
+  val c = _iflush(buf, cursor, 771)
+  val off = _attr_head(buf, c, 7, wid, mid, midl, name)
+  val () = cursor := off
+  prval () = fold@(doc)
+in end
+
+(* A boolean attribute: present when b *)
+fn _attr_bool {l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, b: bool): void =
+  if b then _attr_lit(doc, wid, name, "") else _attr_unset(doc, wid, name)
+
+(* ---- Attribute values of widget's enumerations ---- *)
+
+fn _ol_type_str (t: $W.ol_list_type): [n:pos | n < 256] string n =
+  case+ t of
+  | $W.OlDecimal() => "1" | $W.OlLowerAlpha() => "a" | $W.OlUpperAlpha() => "A"
+  | $W.OlLowerRoman() => "i" | $W.OlUpperRoman() => "I"
+
+fn _button_type_str (t: $W.button_type): [n:pos | n < 256] string n =
+  case+ t of
+  | $W.ButtonSubmit() => "submit" | $W.ButtonReset() => "reset" | $W.ButtonButton() => "button"
+
+fn _method_str (m: $W.form_method): [n:pos | n < 256] string n =
+  case+ m of
+  | $W.FormGet() => "get" | $W.FormPost() => "post"
+
+fn _enctype_str (e: $W.form_enctype): [n:pos | n < 256] string n =
+  case+ e of
+  | $W.EnctypeUrlencoded() => "application/x-www-form-urlencoded"
+  | $W.EnctypeMultipart() => "multipart/form-data"
+  | $W.EnctypePlain() => "text/plain"
+
+fn _scope_str (s: $W.th_scope): [n:pos | n < 256] string n =
+  case+ s of
+  | $W.ScopeCol() => "col" | $W.ScopeRow() => "row"
+  | $W.ScopeColgroup() => "colgroup" | $W.ScopeRowgroup() => "rowgroup"
+
+fn _loading_str (x: $W.img_loading): [n:pos | n < 256] string n =
+  case+ x of
+  | $W.LoadingLazy() => "lazy" | $W.LoadingEager() => "eager"
+
+fn _track_kind_str (k: $W.track_kind): [n:pos | n < 256] string n =
+  case+ k of
+  | $W.TrackSubtitles() => "subtitles" | $W.TrackCaptions() => "captions"
+  | $W.TrackDescriptions() => "descriptions" | $W.TrackChapters() => "chapters"
+  | $W.TrackMetadata() => "metadata"
+
+fn _emit_target {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, t: $W.link_target): void =
+  case+ t of
+  | $W.Blank() => _attr_lit(doc, wid, "target", "_blank")
+  | $W.Self_() => _attr_lit(doc, wid, "target", "_self")
+  | $W.Parent_() => _attr_lit(doc, wid, "target", "_parent")
+  | $W.Top_() => _attr_lit(doc, wid, "target", "_top")
+  | $W.NamedTarget(t, n) => _attr_text(doc, wid, "target", t, n)
+
+fn _emit_opt_str {l:agz}{nl:pos | nl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, o: $W.option_str): void =
+  case+ o of
+  | $W.SomeStr(t, n) => _attr_text(doc, wid, name, t, n)
+  | $W.NoneStr() => _attr_unset(doc, wid, name)
+
+(* The attributes an element's type carries, set on a new element *)
+fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: $W.html_top): void =
+  case+ top of
+  | $W.Normal(n) => (case+ n of
+    | $W.Ol($W.OlTypeIs(t)) => _attr_lit(doc, wid, "type", _ol_type_str(t))
+    | $W.A(href, hl, target) => let
+        val () = _attr_text(doc, wid, "href", href, hl)
+      in case+ target of
+        | $W.TargetIs(t) => _emit_target(doc, wid, t)
+        | $W.NoTarget() => ()
+      end
+    | $W.Button(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
+    | $W.Label($W.SomeStr(t, tl)) => _attr_text(doc, wid, "for", t, tl)
+    | $W.Form(action, al, m, e) => let
+        val () = _attr_text(doc, wid, "action", action, al)
+        val () = _attr_lit(doc, wid, "method", _method_str(m))
+      in _attr_lit(doc, wid, "enctype", _enctype_str(e)) end
+    | $W.Select(name, nl, multiple) => let
+        val () = _attr_text(doc, wid, "name", name, nl)
+      in if multiple then _attr_lit(doc, wid, "multiple", "") end
+    | $W.Optgroup(label, ll) => _attr_text(doc, wid, "label", label, ll)
+    | $W.HtmlOption(v, vl) => _attr_text(doc, wid, "value", v, vl)
+    | $W.Textarea(name, nl, rows, cols) => let
+        val () = _attr_text(doc, wid, "name", name, nl)
+        val () = _attr_int(doc, wid, "rows", rows)
+      in _attr_int(doc, wid, "cols", cols) end
+    | $W.Th(cs, rs, scope) => let
+        val () = if cs > 1 then _attr_int(doc, wid, "colspan", cs)
+        val () = if rs > 1 then _attr_int(doc, wid, "rowspan", rs)
+      in case+ scope of
+        | $W.ScopeIs(sc) => _attr_lit(doc, wid, "scope", _scope_str(sc))
+        | $W.NoScope() => ()
+      end
+    | $W.Td(cs, rs) => let
+        val () = if cs > 1 then _attr_int(doc, wid, "colspan", cs)
+      in if rs > 1 then _attr_int(doc, wid, "rowspan", rs) end
+    | $W.Video(src, sl, controls, autoplay, loop, muted) => let
+        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = if controls then _attr_lit(doc, wid, "controls", "")
+        val () = if autoplay then _attr_lit(doc, wid, "autoplay", "")
+        val () = if loop then _attr_lit(doc, wid, "loop", "")
+      in if muted then _attr_lit(doc, wid, "muted", "") end
+    | $W.Audio(src, sl, controls, autoplay, loop, muted) => let
+        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = if controls then _attr_lit(doc, wid, "controls", "")
+        val () = if autoplay then _attr_lit(doc, wid, "autoplay", "")
+        val () = if loop then _attr_lit(doc, wid, "loop", "")
+      in if muted then _attr_lit(doc, wid, "muted", "") end
+    | _ => ())
+  | $W.Void(v) => (case+ v of
+    | $W.Img(src, sl, alt, al, loading) => let
+        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_text(doc, wid, "alt", alt, al)
+      in _attr_lit(doc, wid, "loading", _loading_str(loading)) end
+    | $W.HtmlInput(it, name, value, disabled, checked, required) => let
+        val @(tv, tvl) = _input_type_text(it)
+        val () = _emit_set_attr_text_wid(doc, wid, _txt_type(), 4, tv, tvl)
+        val () = (case+ name of
+          | $W.SomeStr(t, n) => _attr_text(doc, wid, "name", t, n) | $W.NoneStr() => ())
+        val () = (case+ value of
+          | $W.SomeStr(t, n) => _attr_text(doc, wid, "value", t, n) | $W.NoneStr() => ())
+        val () = if disabled then _attr_lit(doc, wid, "disabled", "")
+        val () = if checked then _attr_lit(doc, wid, "checked", "")
+      in if required then _attr_lit(doc, wid, "required", "") end
+    | $W.Source(src, sl, t, tl) => let
+        val () = _attr_text(doc, wid, "src", src, sl)
+      in _attr_text(doc, wid, "type", t, tl) end
+    | $W.Track(src, sl, kind, srclang) => let
+        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_lit(doc, wid, "kind", _track_kind_str(kind))
+      in case+ srclang of
+        | $W.SomeStr(t, n) => _attr_text(doc, wid, "srclang", t, n)
+        | $W.NoneStr() => ()
+      end
+    | _ => ())
+
+(* A SetAttribute diff *)
+fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribute_change): void =
+  case+ ch of
+  | $W.SetHref(t, n) => _attr_text(doc, wid, "href", t, n)
+  | $W.SetATarget($W.TargetIs(t)) => _emit_target(doc, wid, t)
+  | $W.SetATarget($W.NoTarget()) => _attr_unset(doc, wid, "target")
+  | $W.SetButtonType(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
+  | $W.SetButtonDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | $W.SetFormAction(t, n) => _attr_text(doc, wid, "action", t, n)
+  | $W.SetFormMethod(m) => _attr_lit(doc, wid, "method", _method_str(m))
+  | $W.SetFormEnctype(e) => _attr_lit(doc, wid, "enctype", _enctype_str(e))
+  | $W.SetSelectDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | $W.SetSelectMultiple(b) => _attr_bool(doc, wid, "multiple", b)
+  | $W.SetOptionValue(t, n) => _attr_text(doc, wid, "value", t, n)
+  | $W.SetOptionDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | $W.SetOptionSelected(b) => _attr_bool(doc, wid, "selected", b)
+  (* a textarea's value is its text *)
+  | $W.SetTextareaValue(t, n) => _emit_text_op_wid(doc, 1, wid, t, n)
+  | $W.SetTextareaDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | $W.SetTextareaReadonly(b) => _attr_bool(doc, wid, "readonly", b)
+  | $W.SetTextareaRows(r) => _attr_int(doc, wid, "rows", r)
+  | $W.SetTextareaCols(c) => _attr_int(doc, wid, "cols", c)
+  | $W.SetColspan(c) => _attr_int(doc, wid, "colspan", c)
+  | $W.SetRowspan(r) => _attr_int(doc, wid, "rowspan", r)
+  | $W.SetThScope($W.ScopeIs(sc)) => _attr_lit(doc, wid, "scope", _scope_str(sc))
+  | $W.SetThScope($W.NoScope()) => _attr_unset(doc, wid, "scope")
+  | $W.SetImgSrc(t, n) => _attr_text(doc, wid, "src", t, n)
+  | $W.SetImgAlt(t, n) => _attr_text(doc, wid, "alt", t, n)
+  | $W.SetImgLoading(x) => _attr_lit(doc, wid, "loading", _loading_str(x))
+  | $W.SetInputType(it) => let
+      val @(tv, tvl) = _input_type_text(it)
+    in _emit_set_attr_text_wid(doc, wid, _txt_type(), 4, tv, tvl) end
+  | $W.SetInputName(o) => _emit_opt_str(doc, wid, "name", o)
+  | $W.SetInputValue(o) => _emit_opt_str(doc, wid, "value", o)
+  | $W.SetInputDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | $W.SetInputChecked(b) => _attr_bool(doc, wid, "checked", b)
+  | $W.SetInputRequired(b) => _attr_bool(doc, wid, "required", b)
+  | $W.SetInputReadonly(b) => _attr_bool(doc, wid, "readonly", b)
+  | $W.SetDetailsOpen(b) => _attr_bool(doc, wid, "open", b)
+
+(* Emits w, a new child of parent_wid, with everything under it: an
+   element with its class, attributes and children, a text as a text node
+   after the parent's children. The walk terminates on w's size. *)
+fun _emit_node {l:agz}{s:pos} .<s, 0>.
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget_sz(s)): void =
   case+ w of
-  | $W.Text(t, tlen) => _emit_set_text_text_wid(doc, parent_wid, t, tlen)
-  | $W.Element($W.ElementNode(wid, top, _, hidden, _, _, _)) => let
+  | $W.Text(t, tlen) => _emit_text_op_wid(doc, 6, parent_wid, t, tlen)
+  | $W.Element($W.ElementNode(wid, top, cls, hidden, ti, title, kids)) => let
       val @(tag, tlen) = (case+ top of
         | $W.Normal(n) => _normal_tag(n)
         | $W.Void(v) => _void_tag(v)
       ): [m:pos | m < 256] @($A.text(m), int m)
       val () = _emit_create_wid(doc, wid, parent_wid, tag, tlen)
-      val () = (if hidden then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6) else ())
-      val () = (case+ top of
-        | $W.Void($W.HtmlInput(it, _, _, _, _, _)) => let
-            val @(tv, tvl) = _input_type_text(it)
-          in _emit_set_attr_text_wid(doc, wid, _txt_type(), 4, tv, tvl) end
-        | _ => ())
-    in end
+      val () = (case+ cls of
+        | $W.ClassIdx(i) => let
+            val @(ct, cl) = $C.class_text(i)
+          in _emit_set_attr_text_wid(doc, wid, _txt_class(), 5, ct, cl) end
+        | $W.NoClass() => ())
+      val () = if hidden then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
+      val () = (case+ ti of
+        | $W.SomeInt(v) => _attr_int(doc, wid, "tabindex", v)
+        | $W.NoneInt() => ())
+      val () = (case+ title of
+        | $W.SomeStr(t, n) => _attr_text(doc, wid, "title", t, n)
+        | $W.NoneStr() => ())
+      val () = _emit_top_attrs(doc, wid, top)
+    in _emit_kids(doc, wid, kids) end
+
+and _emit_kids {l:agz}{k,s:nat} .<s, 1>.
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, kids: $W.widget_list(k, s)): void =
+  case+ kids of
+  | $W.WNil() => ()
+  | $W.WCons(w, rest) => let
+      val () = _emit_node(doc, parent_wid, w)
+    in _emit_kids(doc, parent_wid, rest) end
+
+fn _emit_widget
+  {l:agz}
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget): void =
+  _emit_node(doc, parent_wid, w)
 
 (* ============================================================
    Implementations
@@ -730,9 +1001,11 @@ implement apply{l}(doc, d) = let
       _emit_set_attr_text_wid(doc, wid, _txt_class(), 5, cls, clen)
   | $W.SetTextContent(wid, text, tlen) =>
       _emit_set_text_text_wid(doc, wid, text, tlen)
-  | $W.SetTabindex(_, _) => ()
-  | $W.SetTitle(_, _) => ()
-  | $W.SetAttribute(_, _) => ()
+  | $W.SetTabindex(wid, ti) => (case+ ti of
+      | $W.SomeInt(v) => _attr_int(doc, wid, "tabindex", v)
+      | $W.NoneInt() => _attr_unset(doc, wid, "tabindex"))
+  | $W.SetTitle(wid, t) => _emit_opt_str(doc, wid, "title", t)
+  | $W.SetAttribute(wid, ch) => _emit_attr_change(doc, wid, ch)
   )
 in _flush(doc) end
 
