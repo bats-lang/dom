@@ -736,12 +736,14 @@ implement apply{l}(doc, d) = let
   )
 in _flush(doc) end
 
-implement apply_list{l}(doc, dl) =
-  case+ dl of
-  | $W.DLNil() => ()
-  | $W.DLCons(d, rest) => let
-      val () = apply(doc, d)
-    in apply_list(doc, rest) end
+implement apply_list{l}(doc, dl) = let
+  fun loop {n:nat} .<n>. (doc: !document(l), dl: $W.diff_seq(n)): void =
+    case+ dl of
+    | $W.DLNil() => ()
+    | $W.DLCons(d, rest) => let
+        val () = apply(doc, d)
+      in loop(doc, rest) end
+in loop(doc, dl) end
 
 implement destroy{l}(doc) = let
   val+ ~doc_mk(buf, _, _, _) = doc
