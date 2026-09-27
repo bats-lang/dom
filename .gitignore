@@ -12,3 +12,4 @@ dist/
 docs/
 tests/dynamic/node_modules/
 tests/dynamic/node_modules
+tests/dynamic/package-lock.json
