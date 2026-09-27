@@ -23,7 +23,6 @@ staload "wasm.bats-packages.dev/bridge/src/dom.bats"
   | {l:agz}{nm:pos | nm < 256}{c:nat | c <= DOM_BUF_CAP} doc_mk(l) of (
       $A.arr(byte, l, DOM_BUF_CAP),
       int c,
-      int,
       $A.text(nm),
       int nm
     )
@@ -40,18 +39,10 @@ vtypedef doc_vt(l:addr) = document(l)
    mount_id: $A.text(ni), id_len: int ni): [l:agz] document(l)
 
 (* Open an existing document mount without emitting createElement.
-   Use after the mount was already created by create_document.
-   next_id is the node counter to resume from (from get_next_id). *)
+   Use after the mount was already created by create_document. *)
 #pub fun open_document
   {ni:pos | ni < 256}
-  (mount_id: $A.text(ni), id_len: int ni,
-   next_id: int): [l:agz] document(l)
-
-(* Get the current node ID counter from a document.
-   Use before destroy to save the counter for later open_document calls. *)
-#pub fun get_next_id
-  {l:agz}
-  (doc: !document(l)): int
+  (mount_id: $A.text(ni), id_len: int ni): [l:agz] document(l)
 
 #pub fun apply
   {l:agz}
@@ -102,7 +93,7 @@ vtypedef doc_vt(l:addr) = document(l)
   {l:agz}{li:agz}{ni:pos | ni < 65536}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
    cx: int, cy: int, r: int,
-   start1000: int, end1000: int, ccw: int): void
+   start1000: int, end1000: int, ccw: bool): void
 
 #pub fun canvas_close_path
   {l:agz}{li:agz}{ni:pos | ni < 65536}
@@ -479,7 +470,7 @@ fn _auto_flush
   {l:agz}{needed:pos | needed <= DOM_BUF_CAP}
   (doc: !doc_vt(l), needed: int needed)
   : [c:nat | c + needed <= DOM_BUF_CAP] int(c) = let
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val c0 = cursor
 in
   if c0 + needed > _CAP then let
@@ -544,7 +535,7 @@ fn _emit_create_wid
   {l:agz}{tl:pos | tl < 256}
   (doc: !doc_vt(l), node_wid: $W.widget_id, parent_wid: $W.widget_id,
    tag: $A.text(tl), tag_len: int tl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 771)
   val () = _wb(buf, c, 4)
   val off = $AR.add_g1(c, 1)
@@ -563,7 +554,7 @@ in end
 fn _emit_remove_children_wid
   {l:agz}
   (doc: !doc_vt(l), wid: $W.widget_id): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 259)
   val () = _wb(buf, c, 3)
   val off = $AR.add_g1(c, 1)
@@ -576,7 +567,7 @@ in end
 fn _emit_remove_child_wid
   {l:agz}
   (doc: !doc_vt(l), wid: $W.widget_id): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 259)
   val () = _wb(buf, c, 5)
   val off = $AR.add_g1(c, 1)
@@ -590,7 +581,7 @@ fn _emit_set_attr_empty_wid
   {l:agz}{nl:pos | nl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 516)
   val () = _wb(buf, c, 2)
   val off = $AR.add_g1(c, 1)
@@ -610,7 +601,7 @@ fn _emit_remove_attr_wid
   {l:agz}{nl:pos | nl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 514)
   val () = _wb(buf, c, 7)
   val off = $AR.add_g1(c, 1)
@@ -624,7 +615,7 @@ fn _emit_remove_attr_wid
 in end
 
 fn _flush{l:agz}(doc: !doc_vt(l)): void = let
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val c = cursor
   val () = if c > 0 then _flush_arr(buf, c)
   val () = cursor := 0
@@ -638,7 +629,7 @@ fn _emit_set_attr_text_wid{l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id,
    attr_name: $A.text(nl), name_len: int nl,
    attr_val: $A.text(vl), val_len: int vl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 771)
   val () = _wb(buf, c, 2)
   val off = $AR.add_g1(c, 1)
@@ -659,7 +650,7 @@ in end
 fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
   (doc: !doc_vt(l), wid: $W.widget_id,
    t: $A.text(tl), tlen: int tl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+  val+ @doc_mk(buf, cursor, mid, midl) = doc
   val c = _iflush(buf, cursor, 65795)
   val () = _wb(buf, c, 1)
   val off = $AR.add_g1(c, 1)
@@ -698,7 +689,7 @@ fn _emit_widget
 
 implement create_document{nt}{ni}(mount_tag, tag_len, mount_id, id_len) = let
   val buf = $A.alloc<byte>(_CAP)
-  val doc = doc_mk(buf, 0, 1, mount_id, id_len)
+  val doc = doc_mk(buf, 0, mount_id, id_len)
   (* Clear the mount point before creating the root element.
      This removes any loading spinner or other pre-WASM content. *)
   val () = _emit_remove_children_wid(doc, $W.Root())
@@ -719,7 +710,7 @@ implement apply{l}(doc, d) = let
       if h > 0 then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
       else _emit_remove_attr_wid(doc, wid, _txt_hidden(), 6)
   | $W.SetClass(wid, _, cls_text, cls_len) => let
-      val+ @doc_mk(buf, cursor, _, mid, midl) = doc
+      val+ @doc_mk(buf, cursor, mid, midl) = doc
       val c = _iflush(buf, cursor, 521)
       val () = _wb(buf, c, 2)
       val off = $AR.add_g1(c, 1)
@@ -753,18 +744,12 @@ implement apply_list{l}(doc, dl) =
     in apply_list(doc, rest) end
 
 implement destroy{l}(doc) = let
-  val+ ~doc_mk(buf, _, _, _, _) = doc
+  val+ ~doc_mk(buf, _, _, _) = doc
 in $A.free<byte>(buf) end
 
-implement open_document{ni}(mount_id, id_len, next_id) = let
+implement open_document{ni}(mount_id, id_len) = let
   val buf = $A.alloc<byte>(_CAP)
-in doc_mk(buf, 0, next_id, mount_id, id_len) end
-
-implement get_next_id{l}(doc) = let
-  val+ @doc_mk(_, _, nid, _, _) = doc
-  val r = nid
-  prval () = fold@(doc)
-in r end
+in doc_mk(buf, 0, mount_id, id_len) end
 
 (* ============================================================
    Canvas implementations — opcodes 64-84
@@ -790,7 +775,7 @@ fn _emit_canvas_str_op
    node_id: !$A.borrow(byte, li, ni), id_len: int ni): void = let
   val op_size = 3 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val _ = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = cursor := c + op_size
   prval () = fold@(doc)
@@ -804,7 +789,7 @@ fn _emit_canvas_str_op_i32
    v0: int): void = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = _wi32(buf, off, v0)
   val () = cursor := c + op_size
@@ -819,7 +804,7 @@ fn _emit_canvas_str_op_2i32
    v0: int, v1: int): void = let
   val op_size = 11 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = _wi32(buf, off, v0)
   val () = _wi32(buf, off + 4, v1)
@@ -835,7 +820,7 @@ fn _emit_canvas_str_op_4i32
    v0: int, v1: int, v2: int, v3: int): void = let
   val op_size = 19 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, opc, node_id, id_len)
   val () = _wi32(buf, off, v0)
   val () = _wi32(buf, off + 4, v1)
@@ -866,14 +851,14 @@ implement canvas_line_to{l}{li}{ni}(doc, node_id, id_len, x, y) =
 implement canvas_arc{l}{li}{ni}(doc, node_id, id_len, cx, cy, r, start1000, end1000, ccw) = let
   val op_size = 24 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, 70, node_id, id_len)
   val () = _wi32(buf, off, cx)
   val () = _wi32(buf, off + 4, cy)
   val () = _wi32(buf, off + 8, r)
   val () = _wi32(buf, off + 12, start1000)
   val () = _wi32(buf, off + 16, end1000)
-  val () = if ccw > 0 then _wb(buf, off + 20, 1) else _wb(buf, off + 20, 0)
+  val () = _wb(buf, off + 20, (if ccw then 1 else 0): [v:nat | v < 2] int v)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
@@ -890,7 +875,7 @@ implement canvas_stroke{l}{li}{ni}(doc, node_id, id_len) =
 implement canvas_fill_color{l}{li}{ni}{r,g,b,a}(doc, node_id, id_len, r, g, b0, a) = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, 74, node_id, id_len)
   val () = _wb(buf, off, r)
   val () = _wb(buf, off + 1, g)
@@ -903,7 +888,7 @@ in end
 implement canvas_stroke_color{l}{li}{ni}{r,g,b,a}(doc, node_id, id_len, r, g, b0, a) = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, 75, node_id, id_len)
   val () = _wb(buf, off, r)
   val () = _wb(buf, off + 1, g)
@@ -919,7 +904,7 @@ implement canvas_line_width{l}{li}{ni}(doc, node_id, id_len, w100) =
 implement canvas_fill_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, text_len) = let
   val op_size = 13 + id_len + text_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, 77, node_id, id_len)
   val () = _wi32(buf, off, x)
   val () = _wi32(buf, off + 4, y)
@@ -932,7 +917,7 @@ in end
 implement canvas_stroke_text{l}{li}{ni}{tl}(doc, node_id, id_len, x, y, text, text_len) = let
   val op_size = 13 + id_len + text_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, 78, node_id, id_len)
   val () = _wi32(buf, off, x)
   val () = _wi32(buf, off + 4, y)
@@ -945,7 +930,7 @@ in end
 implement canvas_set_font{l}{li}{ni}{fl}(doc, node_id, id_len, font, font_len) = let
   val op_size = 5 + id_len + font_len
   val c = _auto_flush(doc, op_size)
-  val+ @doc_mk(buf, cursor, _, _, _) = doc
+  val+ @doc_mk(buf, cursor, _, _) = doc
   val off = _write_canvas_id(buf, c, 79, node_id, id_len)
   val () = _wu16le(buf, off, font_len)
   val () = _ctext(buf, off + 2, font, font_len, 0)
