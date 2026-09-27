@@ -1,0 +1,8 @@
+[package]
+name = "document-lifecycle"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"str" = ""
+"wasm.bats-packages.dev/dom" = ""

@@ -1,0 +1,8 @@
+[package]
+name = "document-use-after-destroy"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"str" = ""
+"wasm.bats-packages.dev/dom" = ""
