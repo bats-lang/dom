@@ -1,0 +1,8 @@
+[package]
+name = "canvas-color-256"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"str" = ""
+"wasm.bats-packages.dev/dom" = ""

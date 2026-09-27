@@ -1,0 +1,8 @@
+[package]
+name = "document-leak"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"str" = ""
+"wasm.bats-packages.dev/dom" = ""
