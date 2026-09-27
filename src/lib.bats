@@ -59,8 +59,8 @@ vtypedef doc_vt(l:addr) = document(l)
 
 (* Element, text and attribute operations (and removing children) whose ids and text are held in
    borrows: they are copied into the buffer, and nothing is allocated
-   (where a widget_id, a diff and a text built from bytes are allocated
-   and never freed). Names are string literals. *)
+   (where a text built from bytes is allocated and never freed). Names
+   are string literals. *)
 
 (* A new element <tag id=id> as the last child of the element parent *)
 #pub fun add_element
@@ -354,7 +354,7 @@ fn _input_type_text(it: $W.input_type): [m:pos | m < 256] @($A.text(m), int m) =
 
 fn _tag_default(): $A.text(3) = _tag_div()
 
-fn _normal_tag(n: $W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
+fn _normal_tag(n: !$W.html_normal): [m:pos | m < 256] @($A.text(m), int m) =
   case+ n of
   | $W.Div() => @(_tag_div(), 3)
   | $W.Span() => @(_tag_span(), 4)
@@ -420,7 +420,7 @@ fn _tag_source(): $A.text(6) =
 fn _tag_track(): $A.text(5) =
   $A.text_lit("track")
 
-fn _void_tag(v: $W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
+fn _void_tag(v: !$W.html_void): [m:pos | m < 256] @($A.text(m), int m) =
   case+ v of
   | $W.Br() => @(_tag_br(), 2)
   | $W.Hr() => @(_tag_hr(), 2)
@@ -816,7 +816,7 @@ fn _track_kind_str (k: $W.track_kind): [n:pos | n < 256] string n =
   | $W.TrackDescriptions() => "descriptions" | $W.TrackChapters() => "chapters"
   | $W.TrackMetadata() => "metadata"
 
-fn _emit_target {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, t: $W.link_target): void =
+fn _emit_target {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, t: !$W.link_target): void =
   case+ t of
   | $W.Blank() => _attr_lit(doc, wid, "target", "_blank")
   | $W.Self_() => _attr_lit(doc, wid, "target", "_self")
@@ -825,13 +825,13 @@ fn _emit_target {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, t: $W.link_target):
   | $W.NamedTarget(t, n) => _attr_text(doc, wid, "target", t, n)
 
 fn _emit_opt_str {l:agz}{nl:pos | nl < 256}
-  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, o: $W.option_str): void =
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, o: !$W.option_str): void =
   case+ o of
   | $W.SomeStr(t, n) => _attr_text(doc, wid, name, t, n)
   | $W.NoneStr() => _attr_unset(doc, wid, name)
 
 (* The attributes an element's type carries, set on a new element *)
-fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: $W.html_top): void =
+fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_top): void =
   case+ top of
   | $W.Normal(n) => (case+ n of
     | $W.Ol($W.OlTypeIs(t)) => _attr_lit(doc, wid, "type", _ol_type_str(t))
@@ -910,8 +910,11 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: $W.html_top
 fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribute_change): void =
   case+ ch of
   | ~$W.SetHref(t, n) => _attr_text(doc, wid, "href", t, n)
-  | ~$W.SetATarget($W.TargetIs(t)) => _emit_target(doc, wid, t)
-  | ~$W.SetATarget($W.NoTarget()) => _attr_unset(doc, wid, "target")
+  | ~$W.SetATarget(o) => let
+      val () = (case+ o of
+        | $W.TargetIs(t) => _emit_target(doc, wid, t)
+        | $W.NoTarget() => _attr_unset(doc, wid, "target"))
+    in $W.target_opt_free(o) end
   | ~$W.SetButtonType(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
   | ~$W.SetButtonDisabled(b) => _attr_bool(doc, wid, "disabled", b)
   | ~$W.SetFormAction(t, n) => _attr_text(doc, wid, "action", t, n)
@@ -930,16 +933,23 @@ fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribu
   | ~$W.SetTextareaCols(c) => _attr_int(doc, wid, "cols", c)
   | ~$W.SetColspan(c) => _attr_int(doc, wid, "colspan", c)
   | ~$W.SetRowspan(r) => _attr_int(doc, wid, "rowspan", r)
-  | ~$W.SetThScope($W.ScopeIs(sc)) => _attr_lit(doc, wid, "scope", _scope_str(sc))
-  | ~$W.SetThScope($W.NoScope()) => _attr_unset(doc, wid, "scope")
+  | ~$W.SetThScope(o) => let
+      val () = (case+ o of
+        | $W.ScopeIs(sc) => _attr_lit(doc, wid, "scope", _scope_str(sc))
+        | $W.NoScope() => _attr_unset(doc, wid, "scope"))
+    in $W.scope_opt_free(o) end
   | ~$W.SetImgSrc(t, n) => _attr_text(doc, wid, "src", t, n)
   | ~$W.SetImgAlt(t, n) => _attr_text(doc, wid, "alt", t, n)
   | ~$W.SetImgLoading(x) => _attr_lit(doc, wid, "loading", _loading_str(x))
   | ~$W.SetInputType(it) => let
       val @(tv, tvl) = _input_type_text(it)
     in _emit_set_attr_text_wid(doc, wid, _txt_type(), 4, tv, tvl) end
-  | ~$W.SetInputName(o) => _emit_opt_str(doc, wid, "name", o)
-  | ~$W.SetInputValue(o) => _emit_opt_str(doc, wid, "value", o)
+  | ~$W.SetInputName(o) => let
+      val () = _emit_opt_str(doc, wid, "name", o)
+    in $W.option_str_free(o) end
+  | ~$W.SetInputValue(o) => let
+      val () = _emit_opt_str(doc, wid, "value", o)
+    in $W.option_str_free(o) end
   | ~$W.SetInputDisabled(b) => _attr_bool(doc, wid, "disabled", b)
   | ~$W.SetInputChecked(b) => _attr_bool(doc, wid, "checked", b)
   | ~$W.SetInputRequired(b) => _attr_bool(doc, wid, "required", b)
@@ -950,10 +960,11 @@ fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribu
    element with its class, attributes and children, a text as a text node
    after the parent's children. The walk terminates on w's size. *)
 fun _emit_node {l:agz}{s:pos} .<s, 0>.
-  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget_sz(s)): void =
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: !$W.widget_sz(s)): void =
   case+ w of
   | $W.Text(t, tlen) => _emit_text_op_wid(doc, 6, parent_wid, t, tlen)
-  | $W.Element($W.ElementNode(wid, top, cls, hidden, ti, title, kids)) => let
+  | $W.Element(en) => (case+ en of
+    | $W.ElementNode(wid, top, cls, hidden, ti, title, kids) => let
       val @(tag, tlen) = (case+ top of
         | $W.Normal(n) => _normal_tag(n)
         | $W.Void(v) => _void_tag(v)
@@ -972,10 +983,10 @@ fun _emit_node {l:agz}{s:pos} .<s, 0>.
         | $W.SomeStr(t, n) => _attr_text(doc, wid, "title", t, n)
         | $W.NoneStr() => ())
       val () = _emit_top_attrs(doc, wid, top)
-    in _emit_kids(doc, wid, kids) end
+    in _emit_kids(doc, wid, kids) end)
 
 and _emit_kids {l:agz}{k,s:nat} .<s, 1>.
-  (doc: !doc_vt(l), parent_wid: $W.widget_id, kids: $W.widget_list(k, s)): void =
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, kids: !$W.widget_list(k, s)): void =
   case+ kids of
   | $W.WNil() => ()
   | $W.WCons(w, rest) => let
@@ -984,7 +995,7 @@ and _emit_kids {l:agz}{k,s:nat} .<s, 1>.
 
 fn _emit_widget
   {l:agz}
-  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: $W.widget): void =
+  (doc: !doc_vt(l), parent_wid: $W.widget_id, w: !$W.widget): void =
   _emit_node(doc, parent_wid, w)
 
 (* ============================================================
@@ -1006,8 +1017,9 @@ implement apply{l}(doc, d) = let
   val () = (case+ d of
   | ~$W.RemoveAllChildren(wid) =>
       _emit_remove_children_wid(doc, wid)
-  | ~$W.AddChild(parent_wid, child) =>
-      _emit_widget(doc, parent_wid, child)
+  | ~$W.AddChild(parent_wid, child) => let
+      val () = _emit_widget(doc, parent_wid, child)
+    in $W.widget_free(child) end
   | ~$W.RemoveChild(_, child_wid) =>
       _emit_remove_child_wid(doc, child_wid)
   | ~$W.SetHidden(wid, h) =>
@@ -1034,10 +1046,14 @@ implement apply{l}(doc, d) = let
       _emit_set_attr_text_wid(doc, wid, _txt_class(), 5, cls, clen)
   | ~$W.SetTextContent(wid, text, tlen) =>
       _emit_set_text_text_wid(doc, wid, text, tlen)
-  | ~$W.SetTabindex(wid, ti) => (case+ ti of
-      | $W.SomeInt(v) => _attr_int(doc, wid, "tabindex", v)
-      | $W.NoneInt() => _attr_unset(doc, wid, "tabindex"))
-  | ~$W.SetTitle(wid, t) => _emit_opt_str(doc, wid, "title", t)
+  | ~$W.SetTabindex(wid, ti) => let
+      val () = (case+ ti of
+        | $W.SomeInt(v) => _attr_int(doc, wid, "tabindex", v)
+        | $W.NoneInt() => _attr_unset(doc, wid, "tabindex"))
+    in $W.option_int_free(ti) end
+  | ~$W.SetTitle(wid, t) => let
+      val () = _emit_opt_str(doc, wid, "title", t)
+    in $W.option_str_free(t) end
   | ~$W.SetAttribute(wid, ch) => _emit_attr_change(doc, wid, ch)
   )
 in _flush(doc) end

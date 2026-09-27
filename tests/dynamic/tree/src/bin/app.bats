@@ -13,7 +13,9 @@ fn elem {n:pos | n < 256} (t: $A.text(n), n: int n, top: $W.html_normal): $W.wid
 (* Builds, through dom's diffs, a tree whose HTML check.mjs prints:
    children added, text and class set, one hidden, one added then
    removed, an element added with its children, text nodes appended,
-   attributes set on creation and changed after it. *)
+   attributes set on creation and changed after it. The widget tree is
+   linear: apply consumes each diff (and the widget an AddChild holds),
+   and the tree is freed at the end. *)
 implement main0 () = let
   var mid = @[char][9]('b', 'a', 't', 's', '-', 'r', 'o', 'o', 't')
   val doc = $D.open_document($S.text_of_chars(mid, 9), 9)
@@ -46,7 +48,8 @@ implement main0 () = let
   (* <section id=d> under the span, with a text child *)
   var hi = @[char][2]('h', 'i')
   val sec = elem(id, 1, $W.Section())
-  val @(sec, _) = $W.add_child(sec, $W.Text($S.text_of_chars(hi, 2), 2))
+  val @(sec, dsec) = $W.add_child(sec, $W.Text($S.text_of_chars(hi, 2), 2))
+  val () = $W.diff_free(dsec)
   val () = $D.apply(doc, $W.AddChild($W.Generated(ib, 1), sec))
   (* a second text node after the first *)
   var bang = @[char][1]('!')
@@ -74,8 +77,9 @@ implement main0 () = let
   val inp = $W.Element($W.ElementNode($W.Generated(iff, 1),
     $W.Void($W.HtmlInput($W.InputCheckbox(), $W.SomeStr($S.text_of_chars(nm, 1), 1), $W.NoneStr(), false, true, false)),
     $W.NoClass(), false, $W.NoneInt(), $W.NoneStr(), $W.WNil()))
-  val @(_, d7) = $W.add_child(root, inp)
+  val @(root, d7) = $W.add_child(root, inp)
   val () = $D.apply(doc, d7)
+  val () = $W.widget_free(root)
   val () = $D.apply(doc, $W.SetAttribute($W.Generated(iff, 1), $W.SetInputChecked(false)))
   val () = $D.destroy(doc)
 in end
