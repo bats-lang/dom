@@ -529,8 +529,8 @@ end
 
 (* ---- Node ID helpers ----
    Bridge JS wire format: [u16le str_len][string bytes]
-   Root (id <= 0): uses mount_id
-   Generated (id > 0): "b" + decimal digits *)
+   Root (the empty id): the mount's id
+   Generated: its text *)
 
 fn _write_nid_root
   {l:agz}{nm:pos | nm < 256}{off:nat | off + 2 + nm <= DOM_BUF_CAP}
@@ -546,14 +546,18 @@ fn _write_wid_dispatch
   {nm:pos | nm < 256}
   (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
    wid: $W.widget_id, mid: $A.text(nm), midl: int(nm)): [sz:pos | sz <= 257] int(sz) =
-  case+ wid of
-  | $W.Root() => let
+  let
+    val @(text, tlen) = wid
+  in
+    (* The empty id is the root's: the mount's id *)
+    if tlen <= 0 then let
       val () = _write_nid_root(buf, off, mid, midl)
     in $AR.add_g1(2, midl) end
-  | $W.Generated(text, tlen) => let
+    else let
       val () = _wu16le(buf, off, tlen)
       val () = _ctext(buf, $AR.add_g1(off, 2), text, tlen, 0)
     in $AR.add_g1(2, tlen) end
+  end
 
 (* ---- DOM opcodes with int node IDs (used by create_document) ---- *)
 
