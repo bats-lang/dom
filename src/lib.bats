@@ -117,14 +117,14 @@ vtypedef doc_vt(l:addr) = document(l)
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni): void
 
 #pub fun canvas_fill_color
-  {l:agz}{li:agz}{ni:pos | ni < 65536}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}{r,g,b,a:nat | r < 256; g < 256; b < 256; a < 256}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
-   r: int, g: int, b: int, a: int): void
+   r: int r, g: int g, b: int b, a: int a): void
 
 #pub fun canvas_stroke_color
-  {l:agz}{li:agz}{ni:pos | ni < 65536}
+  {l:agz}{li:agz}{ni:pos | ni < 65536}{r,g,b,a:nat | r < 256; g < 256; b < 256; a < 256}
   (doc: !document(l), node_id: !$A.borrow(byte, li, ni), id_len: int ni,
-   r: int, g: int, b: int, a: int): void
+   r: int r, g: int g, b: int b, a: int a): void
 
 #pub fun canvas_line_width
   {l:agz}{li:agz}{ni:pos | ni < 65536}
@@ -424,21 +424,6 @@ fn _ushr(x: int, n: int): int =
     $AR.sub_int_int($AR.bsl_int_int(1, $AR.sub_int_int(32, n)), 1))
 
 (* ============================================================
-   Safe g0-to-g1 nibble/byte conversion (same pattern as sha256)
-   ============================================================ *)
-
-fun _find_nibble {k:nat | k <= 16} .<16-k>.
-  (target: int, k: int(k)): [r:nat | r < 16] int(r) =
-  if $AR.gte_g1(k, 16) then 0
-  else if $AR.eq_int_int(target, k) then k
-  else _find_nibble(target, $AR.add_g1(k, 1))
-
-fn _g1_byte(x: int): [v:nat | v < 256] int(v) = let
-  val hi = _find_nibble($AR.band_int_int(_ushr(x, 4), 15), 0)
-  val lo = _find_nibble($AR.band_int_int(x, 15), 0)
-in $AR.add_g1($AR.mul_g1(hi, 16), lo) end
-
-(* ============================================================
    Safe write helpers — replace array write_ functions
    ============================================================ *)
 
@@ -448,18 +433,18 @@ fn _wb {l:agz}{n:pos}{i:nat | i < n}{v:nat | v < 256}
 
 fn _wu16le {l:agz}{n:pos}{i:nat | i + 2 <= n}{v:nat | v < 65536}
   (buf: !$A.arr(byte, l, n), i: int(i), v: int(v)): void = let
-  val lo = _g1_byte($AR.band_int_int(v, 255))
-  val hi = _g1_byte($AR.band_int_int(_ushr(v, 8), 255))
+  val lo = $AR.low_byte(v)
+  val hi = $AR.low_byte(_ushr(v, 8))
   val () = $A.set<byte>(buf, i, $A.int2byte(lo))
   val () = $A.set<byte>(buf, $AR.add_g1(i, 1), $A.int2byte(hi))
 in end
 
 fn _wi32 {l:agz}{n:pos}{i:nat | i + 4 <= n}
   (buf: !$A.arr(byte, l, n), i: int(i), v: int): void = let
-  val b0 = _g1_byte($AR.band_int_int(v, 255))
-  val b1 = _g1_byte($AR.band_int_int(_ushr(v, 8), 255))
-  val b2 = _g1_byte($AR.band_int_int(_ushr(v, 16), 255))
-  val b3 = _g1_byte($AR.band_int_int(_ushr(v, 24), 255))
+  val b0 = $AR.low_byte(v)
+  val b1 = $AR.low_byte(_ushr(v, 8))
+  val b2 = $AR.low_byte(_ushr(v, 16))
+  val b3 = $AR.low_byte(_ushr(v, 24))
   val () = $A.set<byte>(buf, i, $A.int2byte(b0))
   val () = $A.set<byte>(buf, $AR.add_g1(i, 1), $A.int2byte(b1))
   val () = $A.set<byte>(buf, $AR.add_g1(i, 2), $A.int2byte(b2))
@@ -527,22 +512,6 @@ end
    Root (id <= 0): uses mount_id
    Generated (id > 0): "b" + decimal digits *)
 
-fn _digit_count(n: int): [m:int | 1 <= m; m <= 5] int m =
-  if n < 10 then 1
-  else if n < 100 then 2
-  else if n < 1000 then 3
-  else if n < 10000 then 4
-  else 5
-
-fun _write_digits_loop
-  {l:agz}{base:nat}{dc:pos | dc <= 5; base + dc <= DOM_BUF_CAP}{p:int | p >= ~1; p < dc} .<p+1>.
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), base: int(base), n: int, p: int(p), dc: int(dc)): void =
-  if p < 0 then ()
-  else let
-    val d = _find_nibble($AR.band_int_int(n mod 10, 15), 0)
-    val () = _wb(buf, $AR.add_g1(base, p), $AR.add_g1(d, 48))
-  in _write_digits_loop(buf, base, n / 10, $AR.sub_g1(p, 1), dc) end
-
 fn _write_nid_root
   {l:agz}{nm:pos | nm < 256}{off:nat | off + 2 + nm <= DOM_BUF_CAP}
   (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
@@ -550,30 +519,6 @@ fn _write_nid_root
   val () = _wu16le(buf, off, mid_len)
   val () = _ctext(buf, $AR.add_g1(off, 2), mid, mid_len, 0)
 in end
-
-fn _write_nid_gen
-  {l:agz}{off:nat}{dc:pos | dc <= 5; off + 3 + dc <= DOM_BUF_CAP}
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
-   node_id: int, dc: int(dc)): void = let
-  val slen = $AR.add_g1(1, dc)
-  val () = _wu16le(buf, off, slen)
-  val () = _wb(buf, $AR.add_g1(off, 2), 98)
-  val () = _write_digits_loop(buf, $AR.add_g1(off, 3), node_id, $AR.sub_g1(dc, 1), dc)
-in end
-
-(* g1 dispatch: write [u16le len][bytes] for an int node_id, return bytes written *)
-fn _write_nid_dispatch
-  {l:agz}{off:nat | off + 258 <= DOM_BUF_CAP}
-  {nm:pos | nm < 256}
-  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int(off),
-   node_id: int, mid: $A.text(nm), midl: int(nm)): [sz:pos | sz <= 257] int(sz) =
-  if node_id <= 0 then let
-    val () = _write_nid_root(buf, off, mid, midl)
-  in $AR.add_g1(2, midl) end
-  else let
-    val dc = _digit_count(node_id)
-    val () = _write_nid_gen(buf, off, node_id, dc)
-  in $AR.add_g1(3, dc) end
 
 (* g1 dispatch: write [u16le len][bytes] for a widget_id, return bytes written *)
 fn _write_wid_dispatch
@@ -591,50 +536,6 @@ fn _write_wid_dispatch
     in $AR.add_g1(2, tlen) end
 
 (* ---- DOM opcodes with int node IDs (used by create_document) ---- *)
-
-(* Opcode 4: create_element
-   Wire: [4][nid:str][pid:str][tag_len:u8][tag_bytes] *)
-fn _emit_create_element
-  {l:agz}{tl:pos | tl < 256}
-  (doc: !doc_vt(l), node_id: int, parent_id: int,
-   tag: $A.text(tl), tag_len: int tl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
-  val c = _iflush(buf, cursor, 771)
-  val () = _wb(buf, c, 4)
-  val off = $AR.add_g1(c, 1)
-  val sz1 = _write_nid_dispatch(buf, off, node_id, mid, midl)
-  val off = $AR.add_g1(off, sz1)
-  val sz2 = _write_nid_dispatch(buf, off, parent_id, mid, midl)
-  val off = $AR.add_g1(off, sz2)
-  val () = _wb(buf, off, tag_len)
-  val off = $AR.add_g1(off, 1)
-  val () = _ctext(buf, off, tag, tag_len, 0)
-  val () = cursor := $AR.add_g1(off, tag_len)
-  prval () = fold@(doc)
-in end
-
-(* Opcode 2: set_attr with int node ID *)
-fn _emit_set_attr
-  {l:agz}{nl:pos | nl < 256}{vl:pos | vl < 65536}
-  (doc: !doc_vt(l), node_id: int,
-   attr_name: $A.text(nl), name_len: int nl,
-   attr_value: $A.text(vl), value_len: int vl): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
-  val c = _iflush(buf, cursor, 66051)
-  val () = _wb(buf, c, 2)
-  val off = $AR.add_g1(c, 1)
-  val sz1 = _write_nid_dispatch(buf, off, node_id, mid, midl)
-  val off = $AR.add_g1(off, sz1)
-  val () = _wb(buf, off, name_len)
-  val off = $AR.add_g1(off, 1)
-  val () = _ctext(buf, off, attr_name, name_len, 0)
-  val off = $AR.add_g1(off, name_len)
-  val () = _wu16le(buf, off, value_len)
-  val off = $AR.add_g1(off, 2)
-  val () = _ctext(buf, off, attr_value, value_len, 0)
-  val () = cursor := $AR.add_g1(off, value_len)
-  prval () = fold@(doc)
-in end
 
 (* ---- DOM opcodes with widget_id ---- *)
 
@@ -659,18 +560,6 @@ fn _emit_create_wid
 in end
 
 (* Opcode 3: remove_children with widget_id *)
-fn _emit_remove_children_nid
-  {l:agz}
-  (doc: !doc_vt(l), node_id: int): void = let
-  val+ @doc_mk(buf, cursor, _, mid, midl) = doc
-  val c = _iflush(buf, cursor, 259)
-  val () = _wb(buf, c, 3)
-  val off = $AR.add_g1(c, 1)
-  val sz = _write_nid_dispatch(buf, off, node_id, mid, midl)
-  val () = cursor := $AR.add_g1(off, sz)
-  prval () = fold@(doc)
-in end
-
 fn _emit_remove_children_wid
   {l:agz}
   (doc: !doc_vt(l), wid: $W.widget_id): void = let
@@ -812,9 +701,9 @@ implement create_document{nt}{ni}(mount_tag, tag_len, mount_id, id_len) = let
   val doc = doc_mk(buf, 0, 1, mount_id, id_len)
   (* Clear the mount point before creating the root element.
      This removes any loading spinner or other pre-WASM content. *)
-  val () = _emit_remove_children_nid(doc, ~1)
-  val () = _emit_create_element(doc, 0, ~1, mount_tag, tag_len)
-  val () = _emit_set_attr(doc, 0, _txt_id(), 2, mount_id, id_len)
+  val () = _emit_remove_children_wid(doc, $W.Root())
+  val () = _emit_create_wid(doc, $W.Root(), $W.Root(), mount_tag, tag_len)
+  val () = _emit_set_attr_text_wid(doc, $W.Root(), _txt_id(), 2, mount_id, id_len)
   val () = _flush(doc)
 in doc end
 
@@ -998,28 +887,28 @@ implement canvas_fill{l}{li}{ni}(doc, node_id, id_len) =
 implement canvas_stroke{l}{li}{ni}(doc, node_id, id_len) =
   _emit_canvas_str_op(doc, 73, node_id, id_len)
 
-implement canvas_fill_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
+implement canvas_fill_color{l}{li}{ni}{r,g,b,a}(doc, node_id, id_len, r, g, b0, a) = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 74, node_id, id_len)
-  val () = _wb(buf, off, _g1_byte(r))
-  val () = _wb(buf, off + 1, _g1_byte(g))
-  val () = _wb(buf, off + 2, _g1_byte(b0))
-  val () = _wb(buf, off + 3, _g1_byte(a))
+  val () = _wb(buf, off, r)
+  val () = _wb(buf, off + 1, g)
+  val () = _wb(buf, off + 2, b0)
+  val () = _wb(buf, off + 3, a)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
 
-implement canvas_stroke_color{l}{li}{ni}(doc, node_id, id_len, r, g, b0, a) = let
+implement canvas_stroke_color{l}{li}{ni}{r,g,b,a}(doc, node_id, id_len, r, g, b0, a) = let
   val op_size = 7 + id_len
   val c = _auto_flush(doc, op_size)
   val+ @doc_mk(buf, cursor, _, _, _) = doc
   val off = _write_canvas_id(buf, c, 75, node_id, id_len)
-  val () = _wb(buf, off, _g1_byte(r))
-  val () = _wb(buf, off + 1, _g1_byte(g))
-  val () = _wb(buf, off + 2, _g1_byte(b0))
-  val () = _wb(buf, off + 3, _g1_byte(a))
+  val () = _wb(buf, off, r)
+  val () = _wb(buf, off + 1, g)
+  val () = _wb(buf, off + 2, b0)
+  val () = _wb(buf, off + 3, a)
   val () = cursor := c + op_size
   prval () = fold@(doc)
 in end
