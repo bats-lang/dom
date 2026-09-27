@@ -909,42 +909,42 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: $W.html_top
 (* A SetAttribute diff *)
 fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribute_change): void =
   case+ ch of
-  | $W.SetHref(t, n) => _attr_text(doc, wid, "href", t, n)
-  | $W.SetATarget($W.TargetIs(t)) => _emit_target(doc, wid, t)
-  | $W.SetATarget($W.NoTarget()) => _attr_unset(doc, wid, "target")
-  | $W.SetButtonType(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
-  | $W.SetButtonDisabled(b) => _attr_bool(doc, wid, "disabled", b)
-  | $W.SetFormAction(t, n) => _attr_text(doc, wid, "action", t, n)
-  | $W.SetFormMethod(m) => _attr_lit(doc, wid, "method", _method_str(m))
-  | $W.SetFormEnctype(e) => _attr_lit(doc, wid, "enctype", _enctype_str(e))
-  | $W.SetSelectDisabled(b) => _attr_bool(doc, wid, "disabled", b)
-  | $W.SetSelectMultiple(b) => _attr_bool(doc, wid, "multiple", b)
-  | $W.SetOptionValue(t, n) => _attr_text(doc, wid, "value", t, n)
-  | $W.SetOptionDisabled(b) => _attr_bool(doc, wid, "disabled", b)
-  | $W.SetOptionSelected(b) => _attr_bool(doc, wid, "selected", b)
+  | ~$W.SetHref(t, n) => _attr_text(doc, wid, "href", t, n)
+  | ~$W.SetATarget($W.TargetIs(t)) => _emit_target(doc, wid, t)
+  | ~$W.SetATarget($W.NoTarget()) => _attr_unset(doc, wid, "target")
+  | ~$W.SetButtonType(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
+  | ~$W.SetButtonDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | ~$W.SetFormAction(t, n) => _attr_text(doc, wid, "action", t, n)
+  | ~$W.SetFormMethod(m) => _attr_lit(doc, wid, "method", _method_str(m))
+  | ~$W.SetFormEnctype(e) => _attr_lit(doc, wid, "enctype", _enctype_str(e))
+  | ~$W.SetSelectDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | ~$W.SetSelectMultiple(b) => _attr_bool(doc, wid, "multiple", b)
+  | ~$W.SetOptionValue(t, n) => _attr_text(doc, wid, "value", t, n)
+  | ~$W.SetOptionDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | ~$W.SetOptionSelected(b) => _attr_bool(doc, wid, "selected", b)
   (* a textarea's value is its text *)
-  | $W.SetTextareaValue(t, n) => _emit_text_op_wid(doc, 1, wid, t, n)
-  | $W.SetTextareaDisabled(b) => _attr_bool(doc, wid, "disabled", b)
-  | $W.SetTextareaReadonly(b) => _attr_bool(doc, wid, "readonly", b)
-  | $W.SetTextareaRows(r) => _attr_int(doc, wid, "rows", r)
-  | $W.SetTextareaCols(c) => _attr_int(doc, wid, "cols", c)
-  | $W.SetColspan(c) => _attr_int(doc, wid, "colspan", c)
-  | $W.SetRowspan(r) => _attr_int(doc, wid, "rowspan", r)
-  | $W.SetThScope($W.ScopeIs(sc)) => _attr_lit(doc, wid, "scope", _scope_str(sc))
-  | $W.SetThScope($W.NoScope()) => _attr_unset(doc, wid, "scope")
-  | $W.SetImgSrc(t, n) => _attr_text(doc, wid, "src", t, n)
-  | $W.SetImgAlt(t, n) => _attr_text(doc, wid, "alt", t, n)
-  | $W.SetImgLoading(x) => _attr_lit(doc, wid, "loading", _loading_str(x))
-  | $W.SetInputType(it) => let
+  | ~$W.SetTextareaValue(t, n) => _emit_text_op_wid(doc, 1, wid, t, n)
+  | ~$W.SetTextareaDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | ~$W.SetTextareaReadonly(b) => _attr_bool(doc, wid, "readonly", b)
+  | ~$W.SetTextareaRows(r) => _attr_int(doc, wid, "rows", r)
+  | ~$W.SetTextareaCols(c) => _attr_int(doc, wid, "cols", c)
+  | ~$W.SetColspan(c) => _attr_int(doc, wid, "colspan", c)
+  | ~$W.SetRowspan(r) => _attr_int(doc, wid, "rowspan", r)
+  | ~$W.SetThScope($W.ScopeIs(sc)) => _attr_lit(doc, wid, "scope", _scope_str(sc))
+  | ~$W.SetThScope($W.NoScope()) => _attr_unset(doc, wid, "scope")
+  | ~$W.SetImgSrc(t, n) => _attr_text(doc, wid, "src", t, n)
+  | ~$W.SetImgAlt(t, n) => _attr_text(doc, wid, "alt", t, n)
+  | ~$W.SetImgLoading(x) => _attr_lit(doc, wid, "loading", _loading_str(x))
+  | ~$W.SetInputType(it) => let
       val @(tv, tvl) = _input_type_text(it)
     in _emit_set_attr_text_wid(doc, wid, _txt_type(), 4, tv, tvl) end
-  | $W.SetInputName(o) => _emit_opt_str(doc, wid, "name", o)
-  | $W.SetInputValue(o) => _emit_opt_str(doc, wid, "value", o)
-  | $W.SetInputDisabled(b) => _attr_bool(doc, wid, "disabled", b)
-  | $W.SetInputChecked(b) => _attr_bool(doc, wid, "checked", b)
-  | $W.SetInputRequired(b) => _attr_bool(doc, wid, "required", b)
-  | $W.SetInputReadonly(b) => _attr_bool(doc, wid, "readonly", b)
-  | $W.SetDetailsOpen(b) => _attr_bool(doc, wid, "open", b)
+  | ~$W.SetInputName(o) => _emit_opt_str(doc, wid, "name", o)
+  | ~$W.SetInputValue(o) => _emit_opt_str(doc, wid, "value", o)
+  | ~$W.SetInputDisabled(b) => _attr_bool(doc, wid, "disabled", b)
+  | ~$W.SetInputChecked(b) => _attr_bool(doc, wid, "checked", b)
+  | ~$W.SetInputRequired(b) => _attr_bool(doc, wid, "required", b)
+  | ~$W.SetInputReadonly(b) => _attr_bool(doc, wid, "readonly", b)
+  | ~$W.SetDetailsOpen(b) => _attr_bool(doc, wid, "open", b)
 
 (* Emits w, a new child of parent_wid, with everything under it: an
    element with its class, attributes and children, a text as a text node
@@ -1004,16 +1004,16 @@ in doc end
 
 implement apply{l}(doc, d) = let
   val () = (case+ d of
-  | $W.RemoveAllChildren(wid) =>
+  | ~$W.RemoveAllChildren(wid) =>
       _emit_remove_children_wid(doc, wid)
-  | $W.AddChild(parent_wid, child) =>
+  | ~$W.AddChild(parent_wid, child) =>
       _emit_widget(doc, parent_wid, child)
-  | $W.RemoveChild(_, child_wid) =>
+  | ~$W.RemoveChild(_, child_wid) =>
       _emit_remove_child_wid(doc, child_wid)
-  | $W.SetHidden(wid, h) =>
+  | ~$W.SetHidden(wid, h) =>
       if h then _emit_set_attr_empty_wid(doc, wid, _txt_hidden(), 6)
       else _emit_remove_attr_wid(doc, wid, _txt_hidden(), 6)
-  | $W.SetClass(wid, _, cls_text, cls_len) => let
+  | ~$W.SetClass(wid, _, cls_text, cls_len) => let
       val+ @doc_mk(buf, cursor, mid, midl) = doc
       val c = _iflush(buf, cursor, 521)
       val () = _wb(buf, c, 2)
@@ -1030,23 +1030,23 @@ implement apply{l}(doc, d) = let
       val () = cursor := $AR.add_g1(off, cls_len)
       prval () = fold@(doc)
     in end
-  | $W.SetClassName(wid, cls, clen) =>
+  | ~$W.SetClassName(wid, cls, clen) =>
       _emit_set_attr_text_wid(doc, wid, _txt_class(), 5, cls, clen)
-  | $W.SetTextContent(wid, text, tlen) =>
+  | ~$W.SetTextContent(wid, text, tlen) =>
       _emit_set_text_text_wid(doc, wid, text, tlen)
-  | $W.SetTabindex(wid, ti) => (case+ ti of
+  | ~$W.SetTabindex(wid, ti) => (case+ ti of
       | $W.SomeInt(v) => _attr_int(doc, wid, "tabindex", v)
       | $W.NoneInt() => _attr_unset(doc, wid, "tabindex"))
-  | $W.SetTitle(wid, t) => _emit_opt_str(doc, wid, "title", t)
-  | $W.SetAttribute(wid, ch) => _emit_attr_change(doc, wid, ch)
+  | ~$W.SetTitle(wid, t) => _emit_opt_str(doc, wid, "title", t)
+  | ~$W.SetAttribute(wid, ch) => _emit_attr_change(doc, wid, ch)
   )
 in _flush(doc) end
 
 implement apply_list{l}(doc, dl) = let
   fun loop {n:nat} .<n>. (doc: !document(l), dl: $W.diff_seq(n)): void =
     case+ dl of
-    | $W.DLNil() => ()
-    | $W.DLCons(d, rest) => let
+    | ~$W.DLNil() => ()
+    | ~$W.DLCons(d, rest) => let
         val () = apply(doc, d)
       in loop(doc, rest) end
 in loop(doc, dl) end
