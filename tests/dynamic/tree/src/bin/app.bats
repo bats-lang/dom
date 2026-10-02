@@ -70,6 +70,26 @@ implement main0 () = let
   val () = $D.apply(doc, $W.SetTabindex($W.Generated(ie, 1), $W.NoneInt()))
   var href2 = @[char][2]('/', 'y')
   val () = $D.apply(doc, $W.SetAttribute($W.Generated(ie, 1), $W.SetHref($S.text_of_chars(href2, 2), 2)))
+  (* <a id=g> made with a javascript: href, which is not set; <a id=h>
+     made with "#z", then changed to a JAVASCRIPT: href, which removes it *)
+  var cg = @[char][1]('g')
+  val ig = $S.text_of_chars(cg, 1)
+  var script = @[char][12]('j', 'a', 'v', 'a', 's', 'c', 'r', 'i', 'p', 't', ':', '1')
+  val link_g = $W.Element($W.ElementNode($W.Generated(ig, 1),
+    $W.Normal($W.A($S.text_of_chars(script, 12), 12, $W.NoTarget())),
+    $W.NoClass(), false, $W.NoneInt(), $W.NoneStr(), $W.WNil()))
+  val @(root, d8) = $W.add_child(root, link_g)
+  val () = $D.apply(doc, d8)
+  var ch = @[char][1]('h')
+  val ih = $S.text_of_chars(ch, 1)
+  var fragment = @[char][2]('#', 'z')
+  val link_h = $W.Element($W.ElementNode($W.Generated(ih, 1),
+    $W.Normal($W.A($S.text_of_chars(fragment, 2), 2, $W.NoTarget())),
+    $W.NoClass(), false, $W.NoneInt(), $W.NoneStr(), $W.WNil()))
+  val @(root, d9) = $W.add_child(root, link_h)
+  val () = $D.apply(doc, d9)
+  var script_upper = @[char][12]('J', 'A', 'V', 'A', 'S', 'C', 'R', 'I', 'P', 'T', ':', '1')
+  val () = $D.apply(doc, $W.SetAttribute($W.Generated(ih, 1), $W.SetHref($S.text_of_chars(script_upper, 12), 12)))
   (* <input id=f type=checkbox name=n checked>, then unchecked *)
   var cf = @[char][1]('f')
   val iff = $S.text_of_chars(cf, 1)

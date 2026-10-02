@@ -1,5 +1,5 @@
 #!/bin/sh
-# Static tests of dom's document and canvas types. Each package under
+# Static tests of dom's document, canvas and attribute types. Each package under
 # tests/static/accept/ must pass `bats check`; each under
 # tests/static/reject/ must fail it with the message in its `expect`
 # file (so it is rejected for the right reason).

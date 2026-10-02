@@ -1,0 +1,7 @@
+[package]
+name = "src-blob"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"wasm.bats-packages.dev/dom" = ""
