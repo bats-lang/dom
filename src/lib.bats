@@ -79,11 +79,72 @@ vtypedef doc_vt(l:addr) = document(l)
   (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni,
    t: !$A.borrow(byte, lt, nt), off: int o, len: int k): void
 
+(* The attributes set_attr sets. None of them runs script:
+   * none is an event handler (a name starting with "on", in any case):
+     there is no constructor for one, and Aria and Data write "aria-"
+     and "data-" before the rest of their name;
+   * none takes a URL: href, src, action, formaction and xlink:href are
+     url_attribute's, and only set_url and set_url_literal set them.
+   The list is of what is allowed, not of what is not, so an attribute
+   not thought of (srcdoc, poster, ping, ...) cannot be set at all *)
+#pub datatype attribute =
+  | Accept | Alt | Autocapitalize | Autocomplete | Checked | Class | Cols
+  | Colspan | Dir | Disabled | Download | Draggable | Enterkeyhint | For
+  | Height | Hidden | Inputmode | Lang | Loading | Max | Maxlength | Min
+  | Minlength | Multiple | Name | Open | Pattern | Placeholder | Readonly
+  | Rel | Required | Role | Rows | Rowspan | Selected | Size | Spellcheck
+  | Step | Style | Tabindex | Target | Title | Translate | Type | Value
+  | Width
+  | {n:pos | n < 240} Aria of (string n)   (* aria-<the n bytes> *)
+  | {n:pos | n < 240} Data of (string n)   (* data-<the n bytes> *)
+
 (* Attribute name of element id: v[off, off + len) *)
 #pub fun set_attr
-  {l:agz}{li,lv:agz}{ni:pos | ni < 256}{nl:pos | nl < 256}{nv:pos}{o,k:nat | o + k <= nv; k < 65536}
-  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: string nl,
+  {l:agz}{li,lv:agz}{ni:pos | ni < 256}{nv:pos}{o,k:nat | o + k <= nv; k < 65536}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: attribute,
    v: !$A.borrow(byte, lv, nv), off: int o, len: int k): void
+
+(* The attributes whose value is a URL. A URL is put in one only by
+   set_url (bytes checked as they are set) or set_url_literal (whose
+   scheme is its constructor's), so a javascript: URL never is *)
+#pub datatype url_attribute = Href | Src | Action | Formaction | XlinkHref
+
+(* URL attribute name of element id: v[off, off + len), only when it is
+   a URL that runs no script: an http:, https:, blob: or mailto: URL
+   (the scheme in any case), a relative path or a fragment. It is
+   refused when it starts with a control or a space (which the URL
+   parser drops), or when a ':' comes before any '/', '?' or '#' and
+   what is before it is not one of those schemes. The bytes are checked
+   and copied in one call, so they cannot change in between. Whether it
+   was set *)
+#pub fun set_url
+  {l:agz}{li,lv:agz}{ni:pos | ni < 256}{nv:pos}{o,k:nat | o + k <= nv; k < 65536}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: url_attribute,
+   v: !$A.borrow(byte, lv, nv), off: int o, len: int k): bool
+
+(* A URL written in the code: its constructor writes its scheme (or its
+   "#", or the "./" that makes it a path), so what follows cannot make
+   it a javascript: URL. EmptyData is "data:," and nothing after it: an
+   empty text, the usual placeholder for an image not yet given its
+   source *)
+#pub datatype url_literal =
+  | {n:nat | n < 240} Https of (string n)     (* https://<the n bytes> *)
+  | {n:nat | n < 240} Http of (string n)      (* http://<the n bytes> *)
+  | {n:nat | n < 240} Mailto of (string n)    (* mailto:<the n bytes> *)
+  | {n:nat | n < 240} Fragment of (string n)  (* #<the n bytes> *)
+  | {n:nat | n < 240} Path of (string n)      (* ./<the n bytes> *)
+  | EmptyData                                 (* data:, (nothing, as text) *)
+
+(* URL attribute name of element id: the literal value *)
+#pub fun set_url_literal
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: url_attribute,
+   value: url_literal): void
+
+(* Removes URL attribute name of element id *)
+#pub fun remove_url
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: url_attribute): void
 
 (* ============================================================
    Canvas API — emit canvas opcodes into the diff buffer
@@ -702,6 +763,66 @@ fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
    t: $A.text(tl), tlen: int tl): void =
   _emit_text_op_wid(doc, 1, wid, t, tlen)
 
+(* ---- URLs ---- *)
+
+(* A URL read from its first byte, to know whether it can run script.
+   UrlScheme(i, http, https, blob, mailto): i bytes read, none of them
+   ':', '/', '?' or '#', and whether they are still the start of each
+   scheme let through. A ':' then ends the scheme; a '/', '?' or '#'
+   before any ':', or the end, means there is none (a relative path or
+   a fragment) *)
+datatype url_scan =
+  | {i:nat} UrlScheme of (int i, bool, bool, bool, bool)
+  | UrlLetThrough
+  | UrlStopped
+
+fn _lower_case (c: int): int = if c >= 65 && c <= 90 then c + 32 else c
+
+(* Whether bytes 0 to i of a scheme were word's, given that bytes 0 to
+   i - 1 were (still) and byte i is c *)
+fn _still_word {i:nat}{n:nat} (word: string n, i: int i, c: int, still: bool): bool =
+  if still then
+    (if i < g1u2i(string1_length(word)) then char2int0(string_get_at(word, i)) = c else false)
+  else false
+
+fn _url_step (scan: url_scan, c: int): url_scan =
+  case+ scan of
+  | UrlScheme(i, http, https, blob, mailto) =>
+      if c = 58 then (* ':' *)
+        (if (http && i = 4) || (https && i = 5) || (blob && i = 4) || (mailto && i = 6)
+         then UrlLetThrough() else UrlStopped())
+      else if c = 47 || c = 63 || c = 35 then UrlLetThrough() (* '/', '?', '#' *)
+      else if i = 0 && c <= 32 then UrlStopped() (* a control or a space first *)
+      else let
+        val lower = _lower_case(c)
+      in UrlScheme(i + 1, _still_word("http", i, lower, http), _still_word("https", i, lower, https),
+          _still_word("blob", i, lower, blob), _still_word("mailto", i, lower, mailto)) end
+  | UrlLetThrough() => UrlLetThrough()
+  | UrlStopped() => UrlStopped()
+
+fn _url_start (): url_scan = UrlScheme(0, true, true, true, true)
+
+fn _url_runs_no_script (scan: url_scan): bool =
+  case+ scan of
+  | UrlStopped() => false
+  | _ => true
+
+(* The scan of v[i, stop) *)
+fun _scan_borrow {l:agz}{n:pos}{i,stop:nat | i <= stop; stop <= n} .<stop - i>.
+  (v: !$A.borrow(byte, l, n), i: int i, stop: int stop, scan: url_scan): url_scan =
+  if i >= stop then scan
+  else case+ scan of
+    | UrlScheme(_, _, _, _, _) => _scan_borrow(v, i + 1, stop, _url_step(scan, byte2int0($A.read<byte>(v, i))))
+    | _ => scan
+
+(* The scan of t[i, n) *)
+fun _scan_text {n:nat}{i:nat | i <= n} .<n - i>.
+  (t: $A.text(n), i: int i, n: int n, scan: url_scan): url_scan =
+  if i >= n then scan
+  else case+ scan of
+    | UrlScheme(_, _, _, _, _) => _scan_text(t, i + 1, n, _url_step(scan, byte2int0($A.text_get(t, i))))
+    | _ => scan
+
 (* ---- Attributes named by string literals ---- *)
 
 fun _cstr {l:agz}{n:pos}{off:nat}{sn:nat | off + sn <= n}{k:nat | k <= sn} .<sn-k>.
@@ -775,6 +896,14 @@ fn _attr_unset {l:agz}{nl:pos | nl < 256}
   prval () = fold@(doc)
 in end
 
+(* Opcode 2: the URL attribute name = t[0, n) when it runs no script
+   (see set_url), else opcode 7: removed, so a URL refused also takes
+   away the one it replaces *)
+fn _attr_url_text {l:agz}{nl:pos | nl < 256}{vl:pos | vl < 256}
+  (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, t: $A.text(vl), vlen: int vl): void =
+  if _url_runs_no_script(_scan_text(t, 0, vlen, _url_start())) then _attr_text(doc, wid, name, t, vlen)
+  else _attr_unset(doc, wid, name)
+
 (* A boolean attribute: present when b *)
 fn _attr_bool {l:agz}{nl:pos | nl < 256}
   (doc: !doc_vt(l), wid: $W.widget_id, name: string nl, b: bool): void =
@@ -836,7 +965,7 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_to
   | $W.Normal(n) => (case+ n of
     | $W.Ol($W.OlTypeIs(t)) => _attr_lit(doc, wid, "type", _ol_type_str(t))
     | $W.A(href, hl, target) => let
-        val () = _attr_text(doc, wid, "href", href, hl)
+        val () = _attr_url_text(doc, wid, "href", href, hl)
       in case+ target of
         | $W.TargetIs(t) => _emit_target(doc, wid, t)
         | $W.NoTarget() => ()
@@ -844,7 +973,7 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_to
     | $W.Button(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
     | $W.Label($W.SomeStr(t, tl)) => _attr_text(doc, wid, "for", t, tl)
     | $W.Form(action, al, m, e) => let
-        val () = _attr_text(doc, wid, "action", action, al)
+        val () = _attr_url_text(doc, wid, "action", action, al)
         val () = _attr_lit(doc, wid, "method", _method_str(m))
       in _attr_lit(doc, wid, "enctype", _enctype_str(e)) end
     | $W.Select(name, nl, multiple) => let
@@ -867,13 +996,13 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_to
         val () = if cs > 1 then _attr_int(doc, wid, "colspan", cs)
       in if rs > 1 then _attr_int(doc, wid, "rowspan", rs) end
     | $W.Video(src, sl, controls, autoplay, loop, muted) => let
-        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_url_text(doc, wid, "src", src, sl)
         val () = if controls then _attr_lit(doc, wid, "controls", "")
         val () = if autoplay then _attr_lit(doc, wid, "autoplay", "")
         val () = if loop then _attr_lit(doc, wid, "loop", "")
       in if muted then _attr_lit(doc, wid, "muted", "") end
     | $W.Audio(src, sl, controls, autoplay, loop, muted) => let
-        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_url_text(doc, wid, "src", src, sl)
         val () = if controls then _attr_lit(doc, wid, "controls", "")
         val () = if autoplay then _attr_lit(doc, wid, "autoplay", "")
         val () = if loop then _attr_lit(doc, wid, "loop", "")
@@ -881,7 +1010,7 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_to
     | _ => ())
   | $W.Void(v) => (case+ v of
     | $W.Img(src, sl, alt, al, loading) => let
-        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_url_text(doc, wid, "src", src, sl)
         val () = _attr_text(doc, wid, "alt", alt, al)
       in _attr_lit(doc, wid, "loading", _loading_str(loading)) end
     | $W.HtmlInput(it, name, value, disabled, checked, required) => let
@@ -895,10 +1024,10 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_to
         val () = if checked then _attr_lit(doc, wid, "checked", "")
       in if required then _attr_lit(doc, wid, "required", "") end
     | $W.Source(src, sl, t, tl) => let
-        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_url_text(doc, wid, "src", src, sl)
       in _attr_text(doc, wid, "type", t, tl) end
     | $W.Track(src, sl, kind, srclang) => let
-        val () = _attr_text(doc, wid, "src", src, sl)
+        val () = _attr_url_text(doc, wid, "src", src, sl)
         val () = _attr_lit(doc, wid, "kind", _track_kind_str(kind))
       in case+ srclang of
         | $W.SomeStr(t, n) => _attr_text(doc, wid, "srclang", t, n)
@@ -909,7 +1038,7 @@ fn _emit_top_attrs {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, top: !$W.html_to
 (* A SetAttribute diff *)
 fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribute_change): void =
   case+ ch of
-  | ~$W.SetHref(t, n) => _attr_text(doc, wid, "href", t, n)
+  | ~$W.SetHref(t, n) => _attr_url_text(doc, wid, "href", t, n)
   | ~$W.SetATarget(o) => let
       val () = (case+ o of
         | $W.TargetIs(t) => _emit_target(doc, wid, t)
@@ -917,7 +1046,7 @@ fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribu
     in $W.target_opt_free(o) end
   | ~$W.SetButtonType(bt) => _attr_lit(doc, wid, "type", _button_type_str(bt))
   | ~$W.SetButtonDisabled(b) => _attr_bool(doc, wid, "disabled", b)
-  | ~$W.SetFormAction(t, n) => _attr_text(doc, wid, "action", t, n)
+  | ~$W.SetFormAction(t, n) => _attr_url_text(doc, wid, "action", t, n)
   | ~$W.SetFormMethod(m) => _attr_lit(doc, wid, "method", _method_str(m))
   | ~$W.SetFormEnctype(e) => _attr_lit(doc, wid, "enctype", _enctype_str(e))
   | ~$W.SetSelectDisabled(b) => _attr_bool(doc, wid, "disabled", b)
@@ -938,7 +1067,7 @@ fn _emit_attr_change {l:agz} (doc: !doc_vt(l), wid: $W.widget_id, ch: $W.attribu
         | $W.ScopeIs(sc) => _attr_lit(doc, wid, "scope", _scope_str(sc))
         | $W.NoScope() => _attr_unset(doc, wid, "scope"))
     in $W.scope_opt_free(o) end
-  | ~$W.SetImgSrc(t, n) => _attr_text(doc, wid, "src", t, n)
+  | ~$W.SetImgSrc(t, n) => _attr_url_text(doc, wid, "src", t, n)
   | ~$W.SetImgAlt(t, n) => _attr_text(doc, wid, "alt", t, n)
   | ~$W.SetImgLoading(x) => _attr_lit(doc, wid, "loading", _loading_str(x))
   | ~$W.SetInputType(it) => let
@@ -1329,18 +1458,110 @@ implement set_text{l}{li,lt}{ni}{nt}{o,k}(doc, id, ilen, t, off0, len) = let
   prval () = fold@(doc)
 in end
 
-implement set_attr{l}{li,lv}{ni}{nl}{nv}{o,k}(doc, id, ilen, name, v, off0, len) = let
+(* ---- Attribute names ---- *)
+
+(* An attribute's name is its word followed by its rest: the whole name
+   for most, with an empty rest; "aria-" or "data-" for Aria and Data,
+   followed by what they hold *)
+fn _attribute_word (name: attribute): [n:pos | n < 16] string n =
+  case+ name of
+  | Accept() => "accept" | Alt() => "alt" | Autocapitalize() => "autocapitalize"
+  | Autocomplete() => "autocomplete" | Checked() => "checked" | Class() => "class"
+  | Cols() => "cols" | Colspan() => "colspan" | Dir() => "dir" | Disabled() => "disabled"
+  | Download() => "download" | Draggable() => "draggable" | Enterkeyhint() => "enterkeyhint"
+  | For() => "for" | Height() => "height" | Hidden() => "hidden" | Inputmode() => "inputmode"
+  | Lang() => "lang" | Loading() => "loading" | Max() => "max" | Maxlength() => "maxlength"
+  | Min() => "min" | Minlength() => "minlength" | Multiple() => "multiple" | Name() => "name"
+  | Open() => "open" | Pattern() => "pattern" | Placeholder() => "placeholder"
+  | Readonly() => "readonly" | Rel() => "rel" | Required() => "required" | Role() => "role"
+  | Rows() => "rows" | Rowspan() => "rowspan" | Selected() => "selected" | Size() => "size"
+  | Spellcheck() => "spellcheck" | Step() => "step" | Style() => "style"
+  | Tabindex() => "tabindex" | Target() => "target" | Title() => "title"
+  | Translate() => "translate" | Type() => "type" | Value() => "value" | Width() => "width"
+  | Aria(_) => "aria-" | Data(_) => "data-"
+
+fn _attribute_rest (name: attribute): [n:nat | n < 240] string n =
+  case+ name of
+  | Aria(rest) => rest
+  | Data(rest) => rest
+  | _ => ""
+
+fn _url_attribute_word (name: url_attribute): [n:pos | n < 16] string n =
+  case+ name of
+  | Href() => "href" | Src() => "src" | Action() => "action"
+  | Formaction() => "formaction" | XlinkHref() => "xlink:href"
+
+(* [u8 length][word][rest] at off; the offset after it *)
+fn _write_name
+  {l:agz}{off:nat | off + 266 <= DOM_BUF_CAP}{nw:pos | nw < 16}{nr:nat | nr < 240}
+  (buf: !$A.arr(byte, l, DOM_BUF_CAP), off: int off, word: string nw, rest: string nr)
+  : int(off + 1 + nw + nr) = let
+  val word_len = g1u2i(string1_length(word))
+  val rest_len = g1u2i(string1_length(rest))
+  val () = _wb(buf, off, word_len + rest_len)
+  val () = _cstr(buf, off + 1, word, word_len, 0)
+  val () = _cstr(buf, off + 1 + word_len, rest, rest_len, 0)
+in off + 1 + word_len + rest_len end
+
+fn _url_literal_word (value: url_literal): [n:pos | n < 16] string n =
+  case+ value of
+  | Https(_) => "https://" | Http(_) => "http://" | Mailto(_) => "mailto:"
+  | Fragment(_) => "#" | Path(_) => "./" | EmptyData() => "data:,"
+
+fn _url_literal_rest (value: url_literal): [n:nat | n < 240] string n =
+  case+ value of
+  | Https(rest) => rest | Http(rest) => rest | Mailto(rest) => rest
+  | Fragment(rest) => rest | Path(rest) => rest | EmptyData() => ""
+
+implement set_attr{l}{li,lv}{ni}{nv}{o,k}(doc, id, ilen, name, v, off0, len) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
   val c = _iflush(buf, cursor, 66051)
   val () = _wb(buf, c, 2)
   val off = _wid_borrow(buf, c + 1, id, ilen)
-  val nlen = g1u2i(string1_length(name))
-  val () = _wb(buf, off, nlen)
-  val () = _cstr(buf, off + 1, name, nlen, 0)
-  val off = off + 1 + nlen
+  val off = _write_name(buf, off, _attribute_word(name), _attribute_rest(name))
   val () = _wu16le(buf, off, len)
   val () = _cregion(buf, off + 2, v, off0, len, 0)
   val () = cursor := off + 2 + len
+  prval () = fold@(doc)
+in end
+
+implement set_url{l}{li,lv}{ni}{nv}{o,k}(doc, id, ilen, name, v, off0, len) =
+  if _url_runs_no_script(_scan_borrow(v, off0, off0 + len, _url_start())) then let
+    val+ @doc_mk(buf, cursor, _, _) = doc
+    val c = _iflush(buf, cursor, 66051)
+    val () = _wb(buf, c, 2)
+    val off = _wid_borrow(buf, c + 1, id, ilen)
+    val off = _write_name(buf, off, _url_attribute_word(name), "")
+    val () = _wu16le(buf, off, len)
+    val () = _cregion(buf, off + 2, v, off0, len, 0)
+    val () = cursor := off + 2 + len
+    prval () = fold@(doc)
+  in true end
+  else false
+
+implement set_url_literal{l}{li}{ni}(doc, id, ilen, name, value) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 66051)
+  val () = _wb(buf, c, 2)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val off = _write_name(buf, off, _url_attribute_word(name), "")
+  val word = _url_literal_word(value)
+  val word_len = g1u2i(string1_length(word))
+  val rest = _url_literal_rest(value)
+  val rest_len = g1u2i(string1_length(rest))
+  val () = _wu16le(buf, off, word_len + rest_len)
+  val () = _cstr(buf, off + 2, word, word_len, 0)
+  val () = _cstr(buf, off + 2 + word_len, rest, rest_len, 0)
+  val () = cursor := off + 2 + word_len + rest_len
+  prval () = fold@(doc)
+in end
+
+implement remove_url{l}{li}{ni}(doc, id, ilen, name) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 66051)
+  val () = _wb(buf, c, 7)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val () = cursor := _write_name(buf, off, _url_attribute_word(name), "")
   prval () = fold@(doc)
 in end
 

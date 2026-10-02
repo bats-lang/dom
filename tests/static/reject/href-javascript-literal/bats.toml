@@ -1,0 +1,7 @@
+[package]
+name = "href-javascript-literal"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"wasm.bats-packages.dev/dom" = ""

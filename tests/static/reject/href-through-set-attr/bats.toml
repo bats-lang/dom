@@ -1,0 +1,7 @@
+[package]
+name = "href-through-set-attr"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"wasm.bats-packages.dev/dom" = ""
