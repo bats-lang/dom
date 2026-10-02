@@ -75,6 +75,18 @@ $D.set_image_src{l:agz}{ld:agz}{lm:agz}{nd:nat}{nm:nat}
    mime_type: !A.borrow(byte, lm, nm), mime_len: int nm) : stream(l)
 ```
 
+## Elements
+
+`add_element` takes a `tag`, a datatype of the elements it may make
+(`Div`, `P`, `Span`, `A`, `Img`, `Button`, `Input`, `Table`, `Ruby`, ...).
+Nothing that runs or loads code, or changes how the page is read, has a
+constructor: `script`, `iframe`, `frame`, `object`, `embed`, `base`,
+`link`, `meta`, `template` and `noscript`, nor `form`. A string tag such
+as `"script"` does not type-check. A `<style>` is made only with a
+reason, `Stylesheet(AppStylesheet)`: CSS runs no script, and the one
+reason is a sheet whose text the app writes itself. bridge's flush
+refuses the excluded tags too (bats-lang/dom#60).
+
 ## Attributes and URLs
 
 No attribute dom writes can run script, and the types say so:

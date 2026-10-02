@@ -59,14 +59,39 @@ vtypedef doc_vt(l:addr) = document(l)
 
 (* Element, text and attribute operations (and removing children) whose ids and text are held in
    borrows: they are copied into the buffer, and nothing is allocated
-   (where a text built from bytes is allocated and never freed). Names
-   are string literals. *)
+   (where a text built from bytes is allocated and never freed). Tags
+   and attribute names are datatypes. *)
+
+(* Why a <style> element is made. CSS runs no script in any browser
+   in use (IE's expression() and Firefox's -moz-binding are gone), but
+   a sheet copied from content could still read the page through
+   selectors and url(), so the one reason is a sheet whose text the
+   app writes itself *)
+#pub datatype style_reason = AppStylesheet
+
+(* The elements add_element makes. The list is of what is allowed, so
+   none of the elements that run or load code, or change how the page
+   is read, can be made: script, iframe, frame, object, embed, base,
+   link, meta, template and noscript have no constructor, and neither
+   has form (no app needs one: a field is used without it). A <style>
+   is made only with a reason (Stylesheet) *)
+#pub datatype tag =
+  | A | Abbr | Article | Aside | Audio | B | Bdi | Bdo | Blockquote | Br
+  | Button | Canvas | Caption | Cite | Code | Dd | Del | Details | Dfn
+  | Dialog | Div | Dl | Dt | Em | Fieldset | Figcaption | Figure | Footer
+  | H1 | H2 | H3 | H4 | H5 | H6 | Header | Hr | I | Img | Input | Ins
+  | Kbd | Label | Legend | Li | Main | Mark | Meter | Nav | Ol | Optgroup
+  | Option | Output | P | Pre | Progress | Q | Rb | Rp | Rt | Rtc | Ruby
+  | S | Samp | Section | Select | Small | Source | Span | Strong | Sub
+  | Summary | Sup | Table | Tbody | Td | Textarea | Tfoot | Th | Thead
+  | Time | Tr | Track | U | Ul | Var | Video | Wbr
+  | Stylesheet of (style_reason)   (* <style> *)
 
 (* A new element <tag id=id> as the last child of the element parent *)
 #pub fun add_element
-  {l:agz}{lp,li:agz}{np,ni:pos | np < 256; ni < 256}{tl:pos | tl < 256}
+  {l:agz}{lp,li:agz}{np,ni:pos | np < 256; ni < 256}
   (doc: !document(l), parent: !$A.borrow(byte, lp, np), plen: int np,
-   id: !$A.borrow(byte, li, ni), ilen: int ni, tag: string tl): void
+   id: !$A.borrow(byte, li, ni), ilen: int ni, element: tag): void
 
 (* Removes every child of element id *)
 #pub fun remove_children
@@ -1425,16 +1450,43 @@ fn _wid_borrow {l:agz}{lb:agz}{n:pos | n < 256}{off:nat | off + 2 + n <= DOM_BUF
   val () = _cborrow(buf, off + 2, b, n, 0)
 in off + 2 + n end
 
-implement add_element{l}{lp,li}{np,ni}{tl}(doc, parent, plen, id, ilen, tag) = let
+(* The name of a tag *)
+fn _tag_word (element: tag): [n:pos | n < 16] string n =
+  case+ element of
+  | A() => "a" | Abbr() => "abbr" | Article() => "article" | Aside() => "aside"
+  | Audio() => "audio" | B() => "b" | Bdi() => "bdi" | Bdo() => "bdo"
+  | Blockquote() => "blockquote" | Br() => "br" | Button() => "button"
+  | Canvas() => "canvas" | Caption() => "caption" | Cite() => "cite" | Code() => "code"
+  | Dd() => "dd" | Del() => "del" | Details() => "details" | Dfn() => "dfn"
+  | Dialog() => "dialog" | Div() => "div" | Dl() => "dl" | Dt() => "dt" | Em() => "em"
+  | Fieldset() => "fieldset" | Figcaption() => "figcaption" | Figure() => "figure"
+  | Footer() => "footer" | H1() => "h1" | H2() => "h2" | H3() => "h3" | H4() => "h4"
+  | H5() => "h5" | H6() => "h6" | Header() => "header" | Hr() => "hr" | I() => "i"
+  | Img() => "img" | Input() => "input" | Ins() => "ins" | Kbd() => "kbd"
+  | Label() => "label" | Legend() => "legend" | Li() => "li" | Main() => "main"
+  | Mark() => "mark" | Meter() => "meter" | Nav() => "nav" | Ol() => "ol"
+  | Optgroup() => "optgroup" | Option() => "option" | Output() => "output" | P() => "p"
+  | Pre() => "pre" | Progress() => "progress" | Q() => "q" | Rb() => "rb" | Rp() => "rp"
+  | Rt() => "rt" | Rtc() => "rtc" | Ruby() => "ruby" | S() => "s" | Samp() => "samp"
+  | Section() => "section" | Select() => "select" | Small() => "small"
+  | Source() => "source" | Span() => "span" | Strong() => "strong" | Sub() => "sub"
+  | Summary() => "summary" | Sup() => "sup" | Table() => "table" | Tbody() => "tbody"
+  | Td() => "td" | Textarea() => "textarea" | Tfoot() => "tfoot" | Th() => "th"
+  | Thead() => "thead" | Time() => "time" | Tr() => "tr" | Track() => "track"
+  | U() => "u" | Ul() => "ul" | Var() => "var" | Video() => "video" | Wbr() => "wbr"
+  | Stylesheet(_) => "style"
+
+implement add_element{l}{lp,li}{np,ni}(doc, parent, plen, id, ilen, element) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
   val c = _iflush(buf, cursor, 771)
   val () = _wb(buf, c, 4)
   val off = _wid_borrow(buf, c + 1, id, ilen)
   val off = _wid_borrow(buf, off, parent, plen)
-  val tlen = g1u2i(string1_length(tag))
-  val () = _wb(buf, off, tlen)
-  val () = _cstr(buf, off + 1, tag, tlen, 0)
-  val () = cursor := off + 1 + tlen
+  val tag_name = _tag_word(element)
+  val tag_len = g1u2i(string1_length(tag_name))
+  val () = _wb(buf, off, tag_len)
+  val () = _cstr(buf, off + 1, tag_name, tag_len, 0)
+  val () = cursor := off + 1 + tag_len
   prval () = fold@(doc)
 in end
 
