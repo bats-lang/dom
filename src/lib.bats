@@ -60,7 +60,9 @@ vtypedef doc_vt(l:addr) = document(l)
 (* Element, text and attribute operations (and removing children) whose ids and text are held in
    borrows: they are copied into the buffer, and nothing is allocated
    (where a text built from bytes is allocated and never freed). Tags
-   and attribute names are datatypes. *)
+   and attribute names are linear (datavtypes): the call that takes one
+   consumes it, so the cell of one that carries data (Stylesheet, Aria,
+   Data, a URL literal) is freed there. *)
 
 (* Why a <style> element is made. CSS runs no script in any browser
    in use (IE's expression() and Firefox's -moz-binding are gone), but
@@ -75,7 +77,7 @@ vtypedef doc_vt(l:addr) = document(l)
    link, meta, template and noscript have no constructor, and neither
    has form (no app needs one: a field is used without it). A <style>
    is made only with a reason (Stylesheet) *)
-#pub datatype tag =
+#pub datavtype tag =
   | A | Abbr | Article | Aside | Audio | B | Bdi | Bdo | Blockquote | Br
   | Button | Canvas | Caption | Cite | Code | Dd | Del | Details | Dfn
   | Dialog | Div | Dl | Dt | Em | Fieldset | Figcaption | Figure | Footer
@@ -112,7 +114,7 @@ vtypedef doc_vt(l:addr) = document(l)
      url_attribute's, and only set_url and set_url_literal set them.
    The list is of what is allowed, not of what is not, so an attribute
    not thought of (srcdoc, poster, ping, ...) cannot be set at all *)
-#pub datatype attribute =
+#pub datavtype attribute =
   | Accept | Alt | Autocapitalize | Autocomplete | Checked | Class | Cols
   | Colspan | Dir | Disabled | Download | Draggable | Enterkeyhint | For
   | Height | Hidden | Inputmode | Lang | Loading | Max | Maxlength | Min
@@ -152,7 +154,7 @@ vtypedef doc_vt(l:addr) = document(l)
    it a javascript: URL. EmptyData is "data:," and nothing after it: an
    empty text, the usual placeholder for an image not yet given its
    source *)
-#pub datatype url_literal =
+#pub datavtype url_literal =
   | {n:nat | n < 240} Https of (string n)     (* https://<the n bytes> *)
   | {n:nat | n < 240} Http of (string n)      (* http://<the n bytes> *)
   | {n:nat | n < 240} Mailto of (string n)    (* mailto:<the n bytes> *)
@@ -791,15 +793,19 @@ fn _emit_set_text_text_wid{l:agz}{tl:pos | tl < 65536}
 (* ---- URLs ---- *)
 
 (* A URL read from its first byte, to know whether it can run script.
-   UrlScheme(i, http, https, blob, mailto): i bytes read, none of them
-   ':', '/', '?' or '#', and whether they are still the start of each
-   scheme let through. A ':' then ends the scheme; a '/', '?' or '#'
-   before any ':', or the end, means there is none (a relative path or
-   a fragment) *)
-datatype url_scan =
-  | {i:nat} UrlScheme of (int i, bool, bool, bool, bool)
-  | UrlLetThrough
-  | UrlStopped
+   In the UrlScheme stage, index bytes have been read, none of them
+   ':', '/', '?' or '#', and http, https, blob and mailto say whether
+   they are still the start of each scheme let through. A ':' then ends
+   the scheme; a '/', '?' or '#' before any ':', or the end, means there
+   is none (a relative path or a fragment). The scan is flat (a record,
+   not a constructor that carries data), so reading a URL allocates
+   nothing *)
+datatype url_stage = UrlScheme | UrlLetThrough | UrlStopped
+
+typedef url_scan = @{
+  stage= url_stage, index= intGte(0),
+  http= bool, https= bool, blob= bool, mailto= bool
+}
 
 fn _lower_case (c: int): int = if c >= 65 && c <= 90 then c + 32 else c
 
@@ -810,25 +816,35 @@ fn _still_word {i:nat}{n:nat} (word: string n, i: int i, c: int, still: bool): b
     (if i < g1u2i(string1_length(word)) then char2int0(string_get_at(word, i)) = c else false)
   else false
 
+(* A scan that has left the UrlScheme stage for stage *)
+fn _url_ended (stage: url_stage): url_scan =
+  @{stage= stage, index= 0, http= false, https= false, blob= false, mailto= false}
+
 fn _url_step (scan: url_scan, c: int): url_scan =
-  case+ scan of
-  | UrlScheme(i, http, https, blob, mailto) =>
+  case+ scan.stage of
+  | UrlScheme() => let
+      val i = scan.index
+    in
       if c = 58 then (* ':' *)
-        (if (http && i = 4) || (https && i = 5) || (blob && i = 4) || (mailto && i = 6)
-         then UrlLetThrough() else UrlStopped())
-      else if c = 47 || c = 63 || c = 35 then UrlLetThrough() (* '/', '?', '#' *)
-      else if i = 0 && c <= 32 then UrlStopped() (* a control or a space first *)
+        (if (scan.http && i = 4) || (scan.https && i = 5) || (scan.blob && i = 4) || (scan.mailto && i = 6)
+         then _url_ended(UrlLetThrough()) else _url_ended(UrlStopped()))
+      else if c = 47 || c = 63 || c = 35 then _url_ended(UrlLetThrough()) (* '/', '?', '#' *)
+      else if i = 0 && c <= 32 then _url_ended(UrlStopped()) (* a control or a space first *)
       else let
         val lower = _lower_case(c)
-      in UrlScheme(i + 1, _still_word("http", i, lower, http), _still_word("https", i, lower, https),
-          _still_word("blob", i, lower, blob), _still_word("mailto", i, lower, mailto)) end
-  | UrlLetThrough() => UrlLetThrough()
-  | UrlStopped() => UrlStopped()
+      in @{stage= UrlScheme(), index= i + 1,
+           http= _still_word("http", i, lower, scan.http),
+           https= _still_word("https", i, lower, scan.https),
+           blob= _still_word("blob", i, lower, scan.blob),
+           mailto= _still_word("mailto", i, lower, scan.mailto)} end
+    end
+  | _ => scan
 
-fn _url_start (): url_scan = UrlScheme(0, true, true, true, true)
+fn _url_start (): url_scan =
+  @{stage= UrlScheme(), index= 0, http= true, https= true, blob= true, mailto= true}
 
 fn _url_runs_no_script (scan: url_scan): bool =
-  case+ scan of
+  case+ scan.stage of
   | UrlStopped() => false
   | _ => true
 
@@ -836,16 +852,16 @@ fn _url_runs_no_script (scan: url_scan): bool =
 fun _scan_borrow {l:agz}{n:pos}{i,stop:nat | i <= stop; stop <= n} .<stop - i>.
   (v: !$A.borrow(byte, l, n), i: int i, stop: int stop, scan: url_scan): url_scan =
   if i >= stop then scan
-  else case+ scan of
-    | UrlScheme(_, _, _, _, _) => _scan_borrow(v, i + 1, stop, _url_step(scan, byte2int0($A.read<byte>(v, i))))
+  else case+ scan.stage of
+    | UrlScheme() => _scan_borrow(v, i + 1, stop, _url_step(scan, byte2int0($A.read<byte>(v, i))))
     | _ => scan
 
 (* The scan of t[i, n) *)
 fun _scan_text {n:nat}{i:nat | i <= n} .<n - i>.
   (t: $A.text(n), i: int i, n: int n, scan: url_scan): url_scan =
   if i >= n then scan
-  else case+ scan of
-    | UrlScheme(_, _, _, _, _) => _scan_text(t, i + 1, n, _url_step(scan, byte2int0($A.text_get(t, i))))
+  else case+ scan.stage of
+    | UrlScheme() => _scan_text(t, i + 1, n, _url_step(scan, byte2int0($A.text_get(t, i))))
     | _ => scan
 
 (* ---- Attributes named by string literals ---- *)
@@ -1453,28 +1469,28 @@ in off + 2 + n end
 (* The name of a tag *)
 fn _tag_word (element: tag): [n:pos | n < 16] string n =
   case+ element of
-  | A() => "a" | Abbr() => "abbr" | Article() => "article" | Aside() => "aside"
-  | Audio() => "audio" | B() => "b" | Bdi() => "bdi" | Bdo() => "bdo"
-  | Blockquote() => "blockquote" | Br() => "br" | Button() => "button"
-  | Canvas() => "canvas" | Caption() => "caption" | Cite() => "cite" | Code() => "code"
-  | Dd() => "dd" | Del() => "del" | Details() => "details" | Dfn() => "dfn"
-  | Dialog() => "dialog" | Div() => "div" | Dl() => "dl" | Dt() => "dt" | Em() => "em"
-  | Fieldset() => "fieldset" | Figcaption() => "figcaption" | Figure() => "figure"
-  | Footer() => "footer" | H1() => "h1" | H2() => "h2" | H3() => "h3" | H4() => "h4"
-  | H5() => "h5" | H6() => "h6" | Header() => "header" | Hr() => "hr" | I() => "i"
-  | Img() => "img" | Input() => "input" | Ins() => "ins" | Kbd() => "kbd"
-  | Label() => "label" | Legend() => "legend" | Li() => "li" | Main() => "main"
-  | Mark() => "mark" | Meter() => "meter" | Nav() => "nav" | Ol() => "ol"
-  | Optgroup() => "optgroup" | Option() => "option" | Output() => "output" | P() => "p"
-  | Pre() => "pre" | Progress() => "progress" | Q() => "q" | Rb() => "rb" | Rp() => "rp"
-  | Rt() => "rt" | Rtc() => "rtc" | Ruby() => "ruby" | S() => "s" | Samp() => "samp"
-  | Section() => "section" | Select() => "select" | Small() => "small"
-  | Source() => "source" | Span() => "span" | Strong() => "strong" | Sub() => "sub"
-  | Summary() => "summary" | Sup() => "sup" | Table() => "table" | Tbody() => "tbody"
-  | Td() => "td" | Textarea() => "textarea" | Tfoot() => "tfoot" | Th() => "th"
-  | Thead() => "thead" | Time() => "time" | Tr() => "tr" | Track() => "track"
-  | U() => "u" | Ul() => "ul" | Var() => "var" | Video() => "video" | Wbr() => "wbr"
-  | Stylesheet(_) => "style"
+  | ~A() => "a" | ~Abbr() => "abbr" | ~Article() => "article" | ~Aside() => "aside"
+  | ~Audio() => "audio" | ~B() => "b" | ~Bdi() => "bdi" | ~Bdo() => "bdo"
+  | ~Blockquote() => "blockquote" | ~Br() => "br" | ~Button() => "button"
+  | ~Canvas() => "canvas" | ~Caption() => "caption" | ~Cite() => "cite" | ~Code() => "code"
+  | ~Dd() => "dd" | ~Del() => "del" | ~Details() => "details" | ~Dfn() => "dfn"
+  | ~Dialog() => "dialog" | ~Div() => "div" | ~Dl() => "dl" | ~Dt() => "dt" | ~Em() => "em"
+  | ~Fieldset() => "fieldset" | ~Figcaption() => "figcaption" | ~Figure() => "figure"
+  | ~Footer() => "footer" | ~H1() => "h1" | ~H2() => "h2" | ~H3() => "h3" | ~H4() => "h4"
+  | ~H5() => "h5" | ~H6() => "h6" | ~Header() => "header" | ~Hr() => "hr" | ~I() => "i"
+  | ~Img() => "img" | ~Input() => "input" | ~Ins() => "ins" | ~Kbd() => "kbd"
+  | ~Label() => "label" | ~Legend() => "legend" | ~Li() => "li" | ~Main() => "main"
+  | ~Mark() => "mark" | ~Meter() => "meter" | ~Nav() => "nav" | ~Ol() => "ol"
+  | ~Optgroup() => "optgroup" | ~Option() => "option" | ~Output() => "output" | ~P() => "p"
+  | ~Pre() => "pre" | ~Progress() => "progress" | ~Q() => "q" | ~Rb() => "rb" | ~Rp() => "rp"
+  | ~Rt() => "rt" | ~Rtc() => "rtc" | ~Ruby() => "ruby" | ~S() => "s" | ~Samp() => "samp"
+  | ~Section() => "section" | ~Select() => "select" | ~Small() => "small"
+  | ~Source() => "source" | ~Span() => "span" | ~Strong() => "strong" | ~Sub() => "sub"
+  | ~Summary() => "summary" | ~Sup() => "sup" | ~Table() => "table" | ~Tbody() => "tbody"
+  | ~Td() => "td" | ~Textarea() => "textarea" | ~Tfoot() => "tfoot" | ~Th() => "th"
+  | ~Thead() => "thead" | ~Time() => "time" | ~Tr() => "tr" | ~Track() => "track"
+  | ~U() => "u" | ~Ul() => "ul" | ~Var() => "var" | ~Video() => "video" | ~Wbr() => "wbr"
+  | ~Stylesheet(_) => "style"
 
 implement add_element{l}{lp,li}{np,ni}(doc, parent, plen, id, ilen, element) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
@@ -1514,29 +1530,33 @@ in end
 
 (* An attribute's name is its word followed by its rest: the whole name
    for most, with an empty rest; "aria-" or "data-" for Aria and Data,
-   followed by what they hold *)
-fn _attribute_word (name: attribute): [n:pos | n < 16] string n =
+   followed by what they hold. Consumes the attribute *)
+fn _attribute_parts (name: attribute)
+  : [nw:pos | nw < 16][nr:nat | nr < 240] @(string nw, string nr) =
   case+ name of
-  | Accept() => "accept" | Alt() => "alt" | Autocapitalize() => "autocapitalize"
-  | Autocomplete() => "autocomplete" | Checked() => "checked" | Class() => "class"
-  | Cols() => "cols" | Colspan() => "colspan" | Dir() => "dir" | Disabled() => "disabled"
-  | Download() => "download" | Draggable() => "draggable" | Enterkeyhint() => "enterkeyhint"
-  | For() => "for" | Height() => "height" | Hidden() => "hidden" | Inputmode() => "inputmode"
-  | Lang() => "lang" | Loading() => "loading" | Max() => "max" | Maxlength() => "maxlength"
-  | Min() => "min" | Minlength() => "minlength" | Multiple() => "multiple" | Name() => "name"
-  | Open() => "open" | Pattern() => "pattern" | Placeholder() => "placeholder"
-  | Readonly() => "readonly" | Rel() => "rel" | Required() => "required" | Role() => "role"
-  | Rows() => "rows" | Rowspan() => "rowspan" | Selected() => "selected" | Size() => "size"
-  | Spellcheck() => "spellcheck" | Step() => "step" | Style() => "style"
-  | Tabindex() => "tabindex" | Target() => "target" | Title() => "title"
-  | Translate() => "translate" | Type() => "type" | Value() => "value" | Width() => "width"
-  | Aria(_) => "aria-" | Data(_) => "data-"
-
-fn _attribute_rest (name: attribute): [n:nat | n < 240] string n =
-  case+ name of
-  | Aria(rest) => rest
-  | Data(rest) => rest
-  | _ => ""
+  | ~Accept() => @("accept", "") | ~Alt() => @("alt", "")
+  | ~Autocapitalize() => @("autocapitalize", "")
+  | ~Autocomplete() => @("autocomplete", "") | ~Checked() => @("checked", "")
+  | ~Class() => @("class", "") | ~Cols() => @("cols", "") | ~Colspan() => @("colspan", "")
+  | ~Dir() => @("dir", "") | ~Disabled() => @("disabled", "")
+  | ~Download() => @("download", "") | ~Draggable() => @("draggable", "")
+  | ~Enterkeyhint() => @("enterkeyhint", "") | ~For() => @("for", "")
+  | ~Height() => @("height", "") | ~Hidden() => @("hidden", "")
+  | ~Inputmode() => @("inputmode", "") | ~Lang() => @("lang", "")
+  | ~Loading() => @("loading", "") | ~Max() => @("max", "")
+  | ~Maxlength() => @("maxlength", "") | ~Min() => @("min", "")
+  | ~Minlength() => @("minlength", "") | ~Multiple() => @("multiple", "")
+  | ~Name() => @("name", "") | ~Open() => @("open", "") | ~Pattern() => @("pattern", "")
+  | ~Placeholder() => @("placeholder", "") | ~Readonly() => @("readonly", "")
+  | ~Rel() => @("rel", "") | ~Required() => @("required", "") | ~Role() => @("role", "")
+  | ~Rows() => @("rows", "") | ~Rowspan() => @("rowspan", "")
+  | ~Selected() => @("selected", "") | ~Size() => @("size", "")
+  | ~Spellcheck() => @("spellcheck", "") | ~Step() => @("step", "")
+  | ~Style() => @("style", "") | ~Tabindex() => @("tabindex", "")
+  | ~Target() => @("target", "") | ~Title() => @("title", "")
+  | ~Translate() => @("translate", "") | ~Type() => @("type", "")
+  | ~Value() => @("value", "") | ~Width() => @("width", "")
+  | ~Aria(rest) => @("aria-", rest) | ~Data(rest) => @("data-", rest)
 
 fn _url_attribute_word (name: url_attribute): [n:pos | n < 16] string n =
   case+ name of
@@ -1555,22 +1575,22 @@ fn _write_name
   val () = _cstr(buf, off + 1 + word_len, rest, rest_len, 0)
 in off + 1 + word_len + rest_len end
 
-fn _url_literal_word (value: url_literal): [n:pos | n < 16] string n =
+(* A URL literal's scheme (or "#", or "./") and what follows it.
+   Consumes the literal *)
+fn _url_literal_parts (value: url_literal)
+  : [nw:pos | nw < 16][nr:nat | nr < 240] @(string nw, string nr) =
   case+ value of
-  | Https(_) => "https://" | Http(_) => "http://" | Mailto(_) => "mailto:"
-  | Fragment(_) => "#" | Path(_) => "./" | EmptyData() => "data:,"
-
-fn _url_literal_rest (value: url_literal): [n:nat | n < 240] string n =
-  case+ value of
-  | Https(rest) => rest | Http(rest) => rest | Mailto(rest) => rest
-  | Fragment(rest) => rest | Path(rest) => rest | EmptyData() => ""
+  | ~Https(rest) => @("https://", rest) | ~Http(rest) => @("http://", rest)
+  | ~Mailto(rest) => @("mailto:", rest) | ~Fragment(rest) => @("#", rest)
+  | ~Path(rest) => @("./", rest) | ~EmptyData() => @("data:,", "")
 
 implement set_attr{l}{li,lv}{ni}{nv}{o,k}(doc, id, ilen, name, v, off0, len) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
   val c = _iflush(buf, cursor, 66051)
   val () = _wb(buf, c, 2)
   val off = _wid_borrow(buf, c + 1, id, ilen)
-  val off = _write_name(buf, off, _attribute_word(name), _attribute_rest(name))
+  val @(word, rest) = _attribute_parts(name)
+  val off = _write_name(buf, off, word, rest)
   val () = _wu16le(buf, off, len)
   val () = _cregion(buf, off + 2, v, off0, len, 0)
   val () = cursor := off + 2 + len
@@ -1597,9 +1617,8 @@ implement set_url_literal{l}{li}{ni}(doc, id, ilen, name, value) = let
   val () = _wb(buf, c, 2)
   val off = _wid_borrow(buf, c + 1, id, ilen)
   val off = _write_name(buf, off, _url_attribute_word(name), "")
-  val word = _url_literal_word(value)
+  val @(word, rest) = _url_literal_parts(value)
   val word_len = g1u2i(string1_length(word))
-  val rest = _url_literal_rest(value)
   val rest_len = g1u2i(string1_length(rest))
   val () = _wu16le(buf, off, word_len + rest_len)
   val () = _cstr(buf, off + 2, word, word_len, 0)
