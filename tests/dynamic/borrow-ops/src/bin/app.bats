@@ -45,7 +45,8 @@ in $A.free<byte>($A.thaw<byte>(id_frozen)) end
    built text is involved. Then links whose hrefs set_url lets through
    (http, https, blob and mailto in any case, relative paths and
    fragments) or refuses (javascript: in any case, after a space or with
-   a tab inside, and other schemes), and literal ones *)
+   a tab inside, and other schemes), and literal ones; and a clone,
+   scrolled *)
 implement main0 () = let
   val doc = $D.open_document($A.text_lit("bats-root"), 9)
   val @(fr, br) = $A.freeze<byte>(bytes("bats-root"))
@@ -94,6 +95,26 @@ implement main0 () = let
   val () = $D.remove_url(doc, bm, 2, $D.Href)
   val () = $A.drop<byte>(fm, bm)
   val () = $A.free<byte>($A.thaw<byte>(fm))
+  (* a box with a tabindex and a child, cloned (its child losing its
+     id), then the clone's tabindex removed, the clone made inert and
+     scrolled *)
+  val @(fw, bw) = $A.freeze<byte>(bytes("w1"))
+  val @(fx, bx) = $A.freeze<byte>(bytes("w2"))
+  val @(fk, bk) = $A.freeze<byte>(bytes("k1"))
+  val () = $D.add_element(doc, br, 9, bw, 2, $D.Div)
+  val () = $D.set_attr(doc, bw, 2, $D.Tabindex, bt, 0, 0)
+  val () = $D.add_element(doc, bw, 2, bx, 2, $D.Span)
+  val () = $D.set_text(doc, bx, 2, bt, 2, 5)
+  val () = $D.clone_element(doc, bw, 2, br, 9, bk, 2)
+  val () = $D.remove_attr(doc, bk, 2, $D.Tabindex)
+  val () = $D.set_attr(doc, bk, 2, $D.Inert, bt, 0, 0)
+  val () = $D.set_scroll(doc, bk, 2, 640, 12)
+  val () = $A.drop<byte>(fw, bw)
+  val () = $A.free<byte>($A.thaw<byte>(fw))
+  val () = $A.drop<byte>(fx, bx)
+  val () = $A.free<byte>($A.thaw<byte>(fx))
+  val () = $A.drop<byte>(fk, bk)
+  val () = $A.free<byte>($A.thaw<byte>(fk))
   val () = $D.destroy(doc)
   val () = $A.drop<byte>(fr, br)
   val () = $A.free<byte>($A.thaw<byte>(fr))
