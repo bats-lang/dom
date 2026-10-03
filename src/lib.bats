@@ -1546,7 +1546,7 @@ implement clone_element{l}{ls,lp,li}{ns,np,ni}(doc, source, slen, parent, plen, 
   prval () = fold@(doc)
 in end
 
-(* [code][id][i32 value]: SET_SCROLL_LEFT (9) or SET_SCROLL_TOP (10) *)
+(* [code][id][i32 value]: SET_SCROLL_LEFT (11) or SET_SCROLL_TOP (12) *)
 fn _scroll_op {l:agz}{li:agz}{ni:pos | ni < 256}{code:nat | code < 256}
   (doc: !document(l), code: int code, id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void = let
   val+ @doc_mk(buf, cursor, _, _) = doc
@@ -1558,9 +1558,9 @@ fn _scroll_op {l:agz}{li:agz}{ni:pos | ni < 256}{code:nat | code < 256}
   prval () = fold@(doc)
 in end
 
-implement set_scroll_left{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 9, id, ilen, value)
+implement set_scroll_left{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 11, id, ilen, value)
 
-implement set_scroll_top{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 10, id, ilen, value)
+implement set_scroll_top{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 12, id, ilen, value)
 
 implement remove_children{l}{li}{ni}(doc, id, ilen) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
@@ -1683,9 +1683,11 @@ implement set_url_literal{l}{li}{ni}(doc, id, ilen, name, value) = let
   prval () = fold@(doc)
 in end
 
+(* [7][id][u8 length][name]: at most 1 + 257 + 1 + 254 bytes, reserved
+   as _write_name asks (266 after the id) *)
 implement remove_attr{l}{li}{ni}(doc, id, ilen, name) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
-  val c = _iflush(buf, cursor, 66051)
+  val c = _iflush(buf, cursor, 524)
   val () = _wb(buf, c, 7)
   val off = _wid_borrow(buf, c + 1, id, ilen)
   val @(word, rest) = _attribute_parts(name)

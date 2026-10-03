@@ -95,18 +95,20 @@ implement main0 () = let
   val () = $D.remove_url(doc, bm, 2, $D.Href)
   val () = $A.drop<byte>(fm, bm)
   val () = $A.free<byte>($A.thaw<byte>(fm))
-  (* a box with a tabindex and a child, cloned (its child losing its
-     id), then the clone's tabindex removed, the clone made inert and
-     scrolled *)
+  (* a box with a tabindex, a data-note and a child, cloned (its child
+     losing its id), then the clone's tabindex and data-note removed,
+     the clone made inert and scrolled *)
   val @(fw, bw) = $A.freeze<byte>(bytes("w1"))
   val @(fx, bx) = $A.freeze<byte>(bytes("w2"))
   val @(fk, bk) = $A.freeze<byte>(bytes("k1"))
   val () = $D.add_element(doc, br, 9, bw, 2, $D.Div)
   val () = $D.set_attr(doc, bw, 2, $D.Tabindex, bt, 0, 0)
+  val () = $D.set_attr(doc, bw, 2, $D.Data("note"), bt, 2, 5)
   val () = $D.add_element(doc, bw, 2, bx, 2, $D.Span)
   val () = $D.set_text(doc, bx, 2, bt, 2, 5)
   val () = $D.clone_element(doc, bw, 2, br, 9, bk, 2)
   val () = $D.remove_attr(doc, bk, 2, $D.Tabindex)
+  val () = $D.remove_attr(doc, bk, 2, $D.Data("note"))
   val () = $D.set_attr(doc, bk, 2, $D.Inert, bt, 0, 0)
   val () = $D.set_scroll_left(doc, bk, 2, 640)
   val () = $D.set_scroll_top(doc, bk, 2, 12)
