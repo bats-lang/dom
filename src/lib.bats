@@ -106,11 +106,17 @@ vtypedef doc_vt(l:addr) = document(l)
    parent: !$A.borrow(byte, lp, np), plen: int np,
    id: !$A.borrow(byte, li, ni), ilen: int ni): void
 
-(* Element id scrolled to left and top (px), in order with the other
-   operations *)
-#pub fun set_scroll
+(* Element id's scrollLeft (px), set in order with the other
+   operations (SET_SCROLL_LEFT). It lays the page out then, so it comes
+   after whatever sizes the element *)
+#pub fun set_scroll_left
   {l:agz}{li:agz}{ni:pos | ni < 256}
-  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, left: int, top: int): void
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void
+
+(* Element id's scrollTop (px), as set_scroll_left (SET_SCROLL_TOP) *)
+#pub fun set_scroll_top
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void
 
 (* Removes every child of element id *)
 #pub fun remove_children
@@ -1540,17 +1546,21 @@ implement clone_element{l}{ls,lp,li}{ns,np,ni}(doc, source, slen, parent, plen, 
   prval () = fold@(doc)
 in end
 
-(* Opcode 9, SET_SCROLL: [9][id][i32 left][i32 top] *)
-implement set_scroll{l}{li}{ni}(doc, id, ilen, left, top) = let
+(* [code][id][i32 value]: SET_SCROLL_LEFT (9) or SET_SCROLL_TOP (10) *)
+fn _scroll_op {l:agz}{li:agz}{ni:pos | ni < 256}{code:nat | code < 256}
+  (doc: !document(l), code: int code, id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void = let
   val+ @doc_mk(buf, cursor, _, _) = doc
-  val c = _iflush(buf, cursor, 266)
-  val () = _wb(buf, c, 9)
+  val c = _iflush(buf, cursor, 262)
+  val () = _wb(buf, c, code)
   val off = _wid_borrow(buf, c + 1, id, ilen)
-  val () = _wi32(buf, off, left)
-  val () = _wi32(buf, off + 4, top)
-  val () = cursor := off + 8
+  val () = _wi32(buf, off, value)
+  val () = cursor := off + 4
   prval () = fold@(doc)
 in end
+
+implement set_scroll_left{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 9, id, ilen, value)
+
+implement set_scroll_top{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 10, id, ilen, value)
 
 implement remove_children{l}{li}{ni}(doc, id, ilen) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
