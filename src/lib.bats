@@ -95,6 +95,29 @@ vtypedef doc_vt(l:addr) = document(l)
   (doc: !document(l), parent: !$A.borrow(byte, lp, np), plen: int np,
    id: !$A.borrow(byte, li, ni), ilen: int ni, element: tag): void
 
+(* A deep copy of element source, as the last child of the element
+   parent, with the id id. The elements inside the copy have no ids (an
+   id names one element); every other attribute is copied, so what the
+   copy must not keep (a tabindex, say) is removed by the app, with
+   remove_attr and set_attr on id *)
+#pub fun clone_element
+  {l:agz}{ls,lp,li:agz}{ns,np,ni:pos | ns < 256; np < 256; ni < 256}
+  (doc: !document(l), source: !$A.borrow(byte, ls, ns), slen: int ns,
+   parent: !$A.borrow(byte, lp, np), plen: int np,
+   id: !$A.borrow(byte, li, ni), ilen: int ni): void
+
+(* Element id's scrollLeft (px), set in order with the other
+   operations (SET_SCROLL_LEFT). It lays the page out then, so it comes
+   after whatever sizes the element *)
+#pub fun set_scroll_left
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void
+
+(* Element id's scrollTop (px), as set_scroll_left (SET_SCROLL_TOP) *)
+#pub fun set_scroll_top
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void
+
 (* Removes every child of element id *)
 #pub fun remove_children
   {l:agz}{li:agz}{ni:pos | ni < 256}
@@ -117,7 +140,7 @@ vtypedef doc_vt(l:addr) = document(l)
 #pub datavtype attribute =
   | Accept | Alt | Autocapitalize | Autocomplete | Checked | Class | Cols
   | Colspan | Dir | Disabled | Download | Draggable | Enterkeyhint | For
-  | Height | Hidden | Inputmode | Lang | Loading | Max | Maxlength | Min
+  | Height | Hidden | Inert | Inputmode | Lang | Loading | Max | Maxlength | Min
   | Minlength | Multiple | Name | Open | Pattern | Placeholder | Readonly
   | Rel | Required | Role | Rows | Rowspan | Selected | Size | Spellcheck
   | Step | Style | Tabindex | Target | Title | Translate | Type | Value
@@ -130,6 +153,11 @@ vtypedef doc_vt(l:addr) = document(l)
   {l:agz}{li,lv:agz}{ni:pos | ni < 256}{nv:pos}{o,k:nat | o + k <= nv; k < 65536}
   (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: attribute,
    v: !$A.borrow(byte, lv, nv), off: int o, len: int k): void
+
+(* Removes attribute name of element id *)
+#pub fun remove_attr
+  {l:agz}{li:agz}{ni:pos | ni < 256}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni, name: attribute): void
 
 (* The attributes whose value is a URL. A URL is put in one only by
    set_url (bytes checked as they are set) or set_url_literal (whose
@@ -1506,6 +1534,34 @@ implement add_element{l}{lp,li}{np,ni}(doc, parent, plen, id, ilen, element) = l
   prval () = fold@(doc)
 in end
 
+(* Opcode 8, CLONE_NODE: [8][id][source][parent] *)
+implement clone_element{l}{ls,lp,li}{ns,np,ni}(doc, source, slen, parent, plen, id, ilen) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 772)
+  val () = _wb(buf, c, 8)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val off = _wid_borrow(buf, off, source, slen)
+  val off = _wid_borrow(buf, off, parent, plen)
+  val () = cursor := off
+  prval () = fold@(doc)
+in end
+
+(* [code][id][i32 value]: SET_SCROLL_LEFT (11) or SET_SCROLL_TOP (12) *)
+fn _scroll_op {l:agz}{li:agz}{ni:pos | ni < 256}{code:nat | code < 256}
+  (doc: !document(l), code: int code, id: !$A.borrow(byte, li, ni), ilen: int ni, value: int): void = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 262)
+  val () = _wb(buf, c, code)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val () = _wi32(buf, off, value)
+  val () = cursor := off + 4
+  prval () = fold@(doc)
+in end
+
+implement set_scroll_left{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 11, id, ilen, value)
+
+implement set_scroll_top{l}{li}{ni}(doc, id, ilen, value) = _scroll_op(doc, 12, id, ilen, value)
+
 implement remove_children{l}{li}{ni}(doc, id, ilen) = let
   val+ @doc_mk(buf, cursor, _, _) = doc
   val c = _iflush(buf, cursor, 259)
@@ -1541,7 +1597,7 @@ fn _attribute_parts (name: attribute)
   | ~Dir() => @("dir", "") | ~Disabled() => @("disabled", "")
   | ~Download() => @("download", "") | ~Draggable() => @("draggable", "")
   | ~Enterkeyhint() => @("enterkeyhint", "") | ~For() => @("for", "")
-  | ~Height() => @("height", "") | ~Hidden() => @("hidden", "")
+  | ~Height() => @("height", "") | ~Hidden() => @("hidden", "") | ~Inert() => @("inert", "")
   | ~Inputmode() => @("inputmode", "") | ~Lang() => @("lang", "")
   | ~Loading() => @("loading", "") | ~Max() => @("max", "")
   | ~Maxlength() => @("maxlength", "") | ~Min() => @("min", "")
@@ -1624,6 +1680,18 @@ implement set_url_literal{l}{li}{ni}(doc, id, ilen, name, value) = let
   val () = _cstr(buf, off + 2, word, word_len, 0)
   val () = _cstr(buf, off + 2 + word_len, rest, rest_len, 0)
   val () = cursor := off + 2 + word_len + rest_len
+  prval () = fold@(doc)
+in end
+
+(* [7][id][u8 length][name]: at most 1 + 257 + 1 + 254 bytes, reserved
+   as _write_name asks (266 after the id) *)
+implement remove_attr{l}{li}{ni}(doc, id, ilen, name) = let
+  val+ @doc_mk(buf, cursor, _, _) = doc
+  val c = _iflush(buf, cursor, 524)
+  val () = _wb(buf, c, 7)
+  val off = _wid_borrow(buf, c + 1, id, ilen)
+  val @(word, rest) = _attribute_parts(name)
+  val () = cursor := _write_name(buf, off, word, rest)
   prval () = fold@(doc)
 in end
 
