@@ -112,7 +112,9 @@ vtypedef doc_vt(l:addr) = document(l)
    colour or a background (the page's colours are the theme's, as for HTML,
    where Style is not set by book content), set to v[off, off + len). The
    others, class, dir, lang and the aria- ones, are set by set_attr as on
-   any element. Whether it was set *)
+   any element. The id is the caller's to keep to MathML elements: it is not
+   checked, and the names this sets (form, open, width, ...) mean something
+   on an HTML element. Whether it was set *)
 #pub fun set_math_attr
   {l:agz}{li,ln,lv:agz}{ni,nn,nv:pos | ni < 256; nn < 32}{o,k:nat | o + k <= nv; k < 65536}
   (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni,
