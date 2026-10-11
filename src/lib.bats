@@ -139,7 +139,7 @@ vtypedef doc_vt(l:addr) = document(l)
    not thought of (srcdoc, poster, ping, ...) cannot be set at all *)
 #pub datavtype attribute =
   | Accept | Alt | Autocapitalize | Autocomplete | Checked | Class | Cols
-  | Colspan | Dir | Disabled | Download | Draggable | Enterkeyhint | For
+  | Colspan | Controls | Dir | Disabled | Download | Draggable | Enterkeyhint | For
   | Height | Hidden | Inert | Inputmode | Lang | Loading | Max | Maxlength | Min
   | Minlength | Multiple | Name | Open | Pattern | Placeholder | Readonly
   | Rel | Required | Role | Rows | Rowspan | Selected | Size | Spellcheck
@@ -1594,6 +1594,7 @@ fn _attribute_parts (name: attribute)
   | ~Autocapitalize() => @("autocapitalize", "")
   | ~Autocomplete() => @("autocomplete", "") | ~Checked() => @("checked", "")
   | ~Class() => @("class", "") | ~Cols() => @("cols", "") | ~Colspan() => @("colspan", "")
+  | ~Controls() => @("controls", "")
   | ~Dir() => @("dir", "") | ~Disabled() => @("disabled", "")
   | ~Download() => @("download", "") | ~Draggable() => @("draggable", "")
   | ~Enterkeyhint() => @("enterkeyhint", "") | ~For() => @("for", "")
