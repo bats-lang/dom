@@ -95,6 +95,32 @@ vtypedef doc_vt(l:addr) = document(l)
   (doc: !document(l), parent: !$A.borrow(byte, lp, np), plen: int np,
    id: !$A.borrow(byte, li, ni), ilen: int ni, element: tag): void
 
+(* MathML: an element in the MathML namespace, which the web platform draws
+   (its elements made by add_element are HTML's, and a browser draws no
+   equation from one). The name is one of MathML Core's, and the few that
+   books write besides (the list is _math_element_ok's); anything else is
+   not made. It is a CREATE_ELEMENT whose tag is "math:" and the name, which
+   the flush makes with createElementNS, refusing others. Whether it was made *)
+#pub fun add_math_element
+  {l:agz}{lp,li,ln:agz}{np,ni,nn:pos | np < 256; ni < 256; nn < 32}
+  (doc: !document(l), parent: !$A.borrow(byte, lp, np), plen: int np,
+   id: !$A.borrow(byte, li, ni), ilen: int ni,
+   name: !$A.borrow(byte, ln, nn), nlen: int nn): bool
+
+(* The attribute name of a MathML element id (one add_math_element
+   made): a presentation attribute of MathML Core or MathML 3 other than a
+   colour or a background (the page's colours are the theme's, as for HTML,
+   where Style is not set by book content), set to v[off, off + len). The
+   others, class, dir, lang and the aria- ones, are set by set_attr as on
+   any element. The id is the caller's to keep to MathML elements: it is not
+   checked, and the names this sets (form, open, width, ...) mean something
+   on an HTML element. Whether it was set *)
+#pub fun set_math_attr
+  {l:agz}{li,ln,lv:agz}{ni,nn,nv:pos | ni < 256; nn < 32}{o,k:nat | o + k <= nv; k < 65536}
+  (doc: !document(l), id: !$A.borrow(byte, li, ni), ilen: int ni,
+   name: !$A.borrow(byte, ln, nn), nlen: int nn,
+   v: !$A.borrow(byte, lv, nv), off: int o, len: int k): bool
+
 (* A deep copy of element source, as the last child of the element
    parent, with the id id. The elements inside the copy have no ids (an
    id names one element); every other attribute is copied, so what the
@@ -1653,6 +1679,82 @@ implement set_attr{l}{li,lv}{ni}{nv}{o,k}(doc, id, ilen, name, v, off0, len) = l
   val () = cursor := off + 2 + len
   prval () = fold@(doc)
 in end
+
+(* ---- MathML ---- *)
+
+(* Whether the nn bytes of name are the characters of lit *)
+fun _name_is {l:agz}{nn:pos}{m:nat}{i:nat | i <= m} .<m - i>.
+  (name: !$A.borrow(byte, l, nn), nlen: int nn, lit: string m, m: int m, i: int i): bool =
+  if i >= m then i = nlen
+  else if i >= nlen then false
+  else if byte2int0($A.read<byte>(name, i)) <> char2int0(string_get_at(lit, i)) then false
+  else _name_is(name, nlen, lit, m, i + 1)
+
+fn _is {l:agz}{nn:pos}{m:nat} (name: !$A.borrow(byte, l, nn), nlen: int nn, lit: string m): bool =
+  _name_is(name, nlen, lit, g1u2i(string1_length(lit)), 0)
+
+(* MathML Core's elements, and mfenced, menclose, mlabeledtr, none and
+   annotation, which books write; maction and annotation-xml (which holds
+   other markup) are not here *)
+fn _math_element_ok {l:agz}{nn:pos} (name: !$A.borrow(byte, l, nn), nlen: int nn): bool =
+  _is(name, nlen, "math") || _is(name, nlen, "mi") || _is(name, nlen, "mn") || _is(name, nlen, "mo")
+  || _is(name, nlen, "ms") || _is(name, nlen, "mtext") || _is(name, nlen, "mspace") || _is(name, nlen, "mrow")
+  || _is(name, nlen, "mfrac") || _is(name, nlen, "msqrt") || _is(name, nlen, "mroot") || _is(name, nlen, "mstyle")
+  || _is(name, nlen, "merror") || _is(name, nlen, "mpadded") || _is(name, nlen, "mphantom") || _is(name, nlen, "msub")
+  || _is(name, nlen, "msup") || _is(name, nlen, "msubsup") || _is(name, nlen, "munder") || _is(name, nlen, "mover")
+  || _is(name, nlen, "munderover") || _is(name, nlen, "mmultiscripts") || _is(name, nlen, "mprescripts")
+  || _is(name, nlen, "none") || _is(name, nlen, "mtable") || _is(name, nlen, "mtr") || _is(name, nlen, "mtd")
+  || _is(name, nlen, "mlabeledtr") || _is(name, nlen, "semantics") || _is(name, nlen, "annotation")
+  || _is(name, nlen, "mfenced") || _is(name, nlen, "menclose")
+
+fn _math_attribute_ok {l:agz}{nn:pos} (name: !$A.borrow(byte, l, nn), nlen: int nn): bool =
+  _is(name, nlen, "display") || _is(name, nlen, "displaystyle") || _is(name, nlen, "scriptlevel")
+  || _is(name, nlen, "mathvariant") || _is(name, nlen, "mathsize") || _is(name, nlen, "fence")
+  || _is(name, nlen, "separator") || _is(name, nlen, "stretchy") || _is(name, nlen, "symmetric")
+  || _is(name, nlen, "largeop") || _is(name, nlen, "movablelimits") || _is(name, nlen, "accent")
+  || _is(name, nlen, "accentunder") || _is(name, nlen, "lspace") || _is(name, nlen, "rspace")
+  || _is(name, nlen, "form") || _is(name, nlen, "linethickness") || _is(name, nlen, "columnalign")
+  || _is(name, nlen, "rowalign") || _is(name, nlen, "columnspacing") || _is(name, nlen, "rowspacing")
+  || _is(name, nlen, "columnlines") || _is(name, nlen, "rowlines") || _is(name, nlen, "frame")
+  || _is(name, nlen, "framespacing") || _is(name, nlen, "equalrows") || _is(name, nlen, "equalcolumns")
+  || _is(name, nlen, "align") || _is(name, nlen, "width") || _is(name, nlen, "height") || _is(name, nlen, "depth")
+  || _is(name, nlen, "voffset") || _is(name, nlen, "minsize") || _is(name, nlen, "maxsize")
+  || _is(name, nlen, "rowspan") || _is(name, nlen, "columnspan") || _is(name, nlen, "open")
+  || _is(name, nlen, "close") || _is(name, nlen, "separators") || _is(name, nlen, "notation")
+  || _is(name, nlen, "alttext") || _is(name, nlen, "bevelled") || _is(name, nlen, "numalign")
+  || _is(name, nlen, "denomalign") || _is(name, nlen, "subscriptshift") || _is(name, nlen, "superscriptshift")
+  || _is(name, nlen, "side") || _is(name, nlen, "indentalign") || _is(name, nlen, "indentshift")
+
+implement add_math_element{l}{lp,li,ln}{np,ni,nn}(doc, parent, plen, id, ilen, name, nlen) =
+  if _math_element_ok(name, nlen) then let
+    val+ @doc_mk(buf, cursor, _, _) = doc
+    val c = _iflush(buf, cursor, 771)
+    val () = _wb(buf, c, 4)
+    val off = _wid_borrow(buf, c + 1, id, ilen)
+    val off = _wid_borrow(buf, off, parent, plen)
+    val () = _wb(buf, off, 5 + nlen)
+    val () = _cstr(buf, off + 1, "math:", 5, 0)
+    val () = _cregion(buf, off + 6, name, 0, nlen, 0)
+    val () = cursor := off + 6 + nlen
+    prval () = fold@(doc)
+  in true end
+  else false
+
+implement set_math_attr{l}{li,ln,lv}{ni,nn,nv}{o,k}(doc, id, ilen, name, nlen, v, off0, len) =
+  if _math_attribute_ok(name, nlen) then let
+    val+ @doc_mk(buf, cursor, _, _) = doc
+    val c = _iflush(buf, cursor, 66051)
+    val () = _wb(buf, c, 2)
+    val off = _wid_borrow(buf, c + 1, id, ilen)
+    val () = _wb(buf, off, nlen)
+    val () = _cregion(buf, off + 1, name, 0, nlen, 0)
+    val off = off + 1 + nlen
+    val () = _wu16le(buf, off, len)
+    val () = _cregion(buf, off + 2, v, off0, len, 0)
+    val () = cursor := off + 2 + len
+    prval () = fold@(doc)
+  in true end
+  else false
 
 implement set_url{l}{li,lv}{ni}{nv}{o,k}(doc, id, ilen, name, v, off0, len) =
   if _url_runs_no_script(_scan_borrow(v, off0, off0 + len, _url_start())) then let

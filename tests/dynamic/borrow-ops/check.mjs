@@ -34,3 +34,5 @@ await loadWASM(readFileSync('dist/pwa/app.wasm'), root, {});
 console.log(root.innerHTML);
 const clone = document.getElementById('k1');
 console.log(`k1 scrolled to ${clone.scrollLeft}, ${clone.scrollTop}`);
+const mathElement = document.getElementById('mm2');
+console.log(`mm2 is ${mathElement.namespaceURI} ${mathElement.localName}`);
