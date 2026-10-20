@@ -28,3 +28,15 @@ that would move instead of moving it: move it in a pull request of its
 own. A pull request that needs newer packages runs `bats lock
 --repository <dir>` and commits `bats.lock` (and
 `.github/repository-version`) with the change.
+
+Which tool moves which pin (bats-lang/dom#93, decided on
+bats-lang/repository-prototype#367): the daily relock moves the compiler
+(`.github/bats-version`), the package repository
+(`.github/repository-version`) and the workflow pins of `publish.yml` and
+`relock.yml`. Dependabot (`.github/dependabot.yml`, weekly, a 7-day
+cooldown) moves the actions by commit with their release comments, except
+the bats-lang ones, and the npm versions and lock of `tests/dynamic`. Node's
+version in `.nvmrc` is moved by Renovate's nvm manager once the Renovate app
+is installed (dom#93, which then adds `renovate.json`), and by hand until
+then. The bats setup action's commit and the runner label `ubuntu-24.04` are
+moved by hand, each in a pull request of its own.

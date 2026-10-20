@@ -7,7 +7,10 @@
 # Not here: the shared workflows of bats-lang/repository-prototype (the
 # daily relock.yml moves those by commit), the bats setup action of
 # bats-lang/bats (ignored below, moved by hand) and the runner label
-# (moved by hand). Node's version is in check.yml, moved by hand too.
+# (moved by hand). Node's version is .nvmrc, which check.yml reads
+# (node-version-file): Dependabot does not read it (its docs name no
+# version file), so Renovate's nvm manager moves it once its app is
+# installed (bats-lang/dom#93), and by hand until then.
 version: 2
 updates:
   - package-ecosystem: github-actions
