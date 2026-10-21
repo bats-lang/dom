@@ -8,9 +8,13 @@
 # daily relock.yml moves those by commit), the bats setup action of
 # bats-lang/bats (ignored below, moved by hand) and the runner label
 # (moved by hand). Node's version is .nvmrc, which check.yml reads
-# (node-version-file): Dependabot does not read it (its docs name no
-# version file), so Renovate's nvm manager moves it once its app is
-# installed (bats-lang/dom#93), and by hand until then.
+# (node-version-file). Dependabot updates only "a dependency manifest or
+# lock file for one of the supported package managers" (its supported
+# ecosystems page), and .nvmrc is neither, so Dependabot does not move it.
+# Renovate's nvm manager does (its default pattern is .nvmrc), once the
+# Renovate app is installed (bats-lang/repository-prototype#369, human
+# only); the decision is repository-prototype#367, comment 6285091040.
+# By hand until then.
 version: 2
 updates:
   - package-ecosystem: github-actions
