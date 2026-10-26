@@ -9,7 +9,7 @@ fn bytes {n:pos | n < 256} (s: string n): [l:agz] $A.arr(byte, l, n) = let
   val () = $A.write_text(a, 0, $A.text_lit(s), n)
 in a end
 
-(* A poster is a url_attribute, which set_attr does not set: a javascript: URL cannot go in through it *)
+(* media attributes: a poster is a url_attribute, so set_attr rejects it *)
 fn f (): void = let
   val doc = $D.open_document($A.text_lit("bats-root"), 9)
   val @(id_frozen, id_bytes) = $A.freeze<byte>(bytes("e1"))
