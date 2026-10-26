@@ -10,6 +10,25 @@ fn bytes {n:pos | n < 256} (s: string n): [l:agz] $A.arr(byte, l, n) = let
   val () = $A.write_text(a, 0, $A.text_lit(s), n)
 in a end
 
+(* media attributes: a video under the mount whose poster is url, through set_url; its data-set is what set_url returned *)
+fn video {l:agz}{lr:agz}{ni:pos | ni < 256}{nu:pos | nu < 256}
+  (doc: !$D.document(l), root: !$A.borrow(byte, lr, 9), id: string ni, url: string nu): void = let
+  val id_len = g1u2i(string1_length(id))
+  val url_len = g1u2i(string1_length(url))
+  val @(id_frozen, id_bytes) = $A.freeze<byte>(bytes(id))
+  val @(url_frozen, url_bytes) = $A.freeze<byte>(bytes(url))
+  val @(answer_frozen, answer_bytes) = $A.freeze<byte>(bytes("yesno"))
+  val () = $D.add_element(doc, root, 9, id_bytes, id_len, $D.Video)
+  val () = (if $D.set_url(doc, id_bytes, id_len, $D.Poster, url_bytes, 0, url_len)
+    then $D.set_attr(doc, id_bytes, id_len, $D.Data("set"), answer_bytes, 0, 3)
+    else $D.set_attr(doc, id_bytes, id_len, $D.Data("set"), answer_bytes, 3, 2))
+  val () = $A.drop<byte>(answer_frozen, answer_bytes)
+  val () = $A.free<byte>($A.thaw<byte>(answer_frozen))
+  val () = $A.drop<byte>(url_frozen, url_bytes)
+  val () = $A.free<byte>($A.thaw<byte>(url_frozen))
+  val () = $A.drop<byte>(id_frozen, id_bytes)
+in $A.free<byte>($A.thaw<byte>(id_frozen)) end
+
 (* A link <a id=id> under the mount whose href is url, through set_url;
    its data-set is whether set_url set it *)
 fn link {l:agz}{lr:agz}{ni:pos | ni < 256}{nu:pos | nu < 256}
@@ -70,30 +89,8 @@ implement main0 () = let
   val () = $A.free<byte>($A.thaw<byte>(fh))
   val () = $A.drop<byte>(fa, ba)
   val () = $A.free<byte>($A.thaw<byte>(fa))
-  (* media attributes: Poster through set_url, its result shown as data-set *)
-  val @(fv, bv) = $A.freeze<byte>(bytes("v1"))
-  val @(fw2, bw2) = $A.freeze<byte>(bytes("v2"))
-  val @(fpb, bpb) = $A.freeze<byte>(bytes("blob:http://localhost/poster"))
-  val @(fpj, bpj) = $A.freeze<byte>(bytes("javascript:alert(1)"))
-  val @(fyn, byn) = $A.freeze<byte>(bytes("yesno"))
-  val () = $D.add_element(doc, br, 9, bv, 2, $D.Video)
-  val () = (if $D.set_url(doc, bv, 2, $D.Poster, bpb, 0, 28)
-    then $D.set_attr(doc, bv, 2, $D.Data("set"), byn, 0, 3)
-    else $D.set_attr(doc, bv, 2, $D.Data("set"), byn, 3, 2))
-  val () = $D.add_element(doc, br, 9, bw2, 2, $D.Video)
-  val () = (if $D.set_url(doc, bw2, 2, $D.Poster, bpj, 0, 19)
-    then $D.set_attr(doc, bw2, 2, $D.Data("set"), byn, 0, 3)
-    else $D.set_attr(doc, bw2, 2, $D.Data("set"), byn, 3, 2))
-  val () = $A.drop<byte>(fv, bv)
-  val () = $A.free<byte>($A.thaw<byte>(fv))
-  val () = $A.drop<byte>(fw2, bw2)
-  val () = $A.free<byte>($A.thaw<byte>(fw2))
-  val () = $A.drop<byte>(fpb, bpb)
-  val () = $A.free<byte>($A.thaw<byte>(fpb))
-  val () = $A.drop<byte>(fpj, bpj)
-  val () = $A.free<byte>($A.thaw<byte>(fpj))
-  val () = $A.drop<byte>(fyn, byn)
-  val () = $A.free<byte>($A.thaw<byte>(fyn))
+  val () = video(doc, br, "v1", "blob:http://localhost/poster")
+  val () = video(doc, br, "v2", "javascript:alert(1)")
   (* MathML: a math element holding an mi, a mathvariant set on it; a
      maction (which runs nothing but is refused) and a mathcolor (a colour
      is the theme's) are refused, so neither shows *)
