@@ -10,6 +10,25 @@ fn bytes {n:pos | n < 256} (s: string n): [l:agz] $A.arr(byte, l, n) = let
   val () = $A.write_text(a, 0, $A.text_lit(s), n)
 in a end
 
+(* media attributes: a video under the mount whose poster is url, through set_url; its data-set is what set_url returned *)
+fn video {l:agz}{lr:agz}{ni:pos | ni < 256}{nu:pos | nu < 256}
+  (doc: !$D.document(l), root: !$A.borrow(byte, lr, 9), id: string ni, url: string nu): void = let
+  val id_len = g1u2i(string1_length(id))
+  val url_len = g1u2i(string1_length(url))
+  val @(id_frozen, id_bytes) = $A.freeze<byte>(bytes(id))
+  val @(url_frozen, url_bytes) = $A.freeze<byte>(bytes(url))
+  val @(answer_frozen, answer_bytes) = $A.freeze<byte>(bytes("yesno"))
+  val () = $D.add_element(doc, root, 9, id_bytes, id_len, $D.Video)
+  val () = (if $D.set_url(doc, id_bytes, id_len, $D.Poster, url_bytes, 0, url_len)
+    then $D.set_attr(doc, id_bytes, id_len, $D.Data("set"), answer_bytes, 0, 3)
+    else $D.set_attr(doc, id_bytes, id_len, $D.Data("set"), answer_bytes, 3, 2))
+  val () = $A.drop<byte>(answer_frozen, answer_bytes)
+  val () = $A.free<byte>($A.thaw<byte>(answer_frozen))
+  val () = $A.drop<byte>(url_frozen, url_bytes)
+  val () = $A.free<byte>($A.thaw<byte>(url_frozen))
+  val () = $A.drop<byte>(id_frozen, id_bytes)
+in $A.free<byte>($A.thaw<byte>(id_frozen)) end
+
 (* A link <a id=id> under the mount whose href is url, through set_url;
    its data-set is whether set_url set it *)
 fn link {l:agz}{lr:agz}{ni:pos | ni < 256}{nu:pos | nu < 256}
@@ -60,12 +79,18 @@ implement main0 () = let
   val _ = $D.set_url(doc, bi, 2, $D.Src, bs, 0, 29)
   val () = $D.set_attr(doc, bi, 2, $D.Alt, bt, 2, 5)
   val () = $D.set_attr(doc, bi, 2, $D.Aria("describedby"), bp, 0, 2)
-  (* an audio element shows its controls: a boolean attribute, an empty value *)
+  (* media attributes: an audio element's controls (empty value) and preload *)
   val @(fa, ba) = $A.freeze<byte>(bytes("a1"))
   val () = $D.add_element(doc, br, 9, ba, 2, $D.Audio)
   val () = $D.set_attr(doc, ba, 2, $D.Controls, bt, 0, 0)
+  val @(fh, bh) = $A.freeze<byte>(bytes("metadata"))
+  val () = $D.set_attr(doc, ba, 2, $D.Preload, bh, 0, 8)
+  val () = $A.drop<byte>(fh, bh)
+  val () = $A.free<byte>($A.thaw<byte>(fh))
   val () = $A.drop<byte>(fa, ba)
   val () = $A.free<byte>($A.thaw<byte>(fa))
+  val () = video(doc, br, "v1", "blob:http://localhost/poster")
+  val () = video(doc, br, "v2", "javascript:alert(1)")
   (* MathML: a math element holding an mi, a mathvariant set on it; a
      maction (which runs nothing but is refused) and a mathcolor (a colour
      is the theme's) are refused, so neither shows *)

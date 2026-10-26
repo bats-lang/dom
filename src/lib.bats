@@ -159,15 +159,15 @@ vtypedef doc_vt(l:addr) = document(l)
    * none is an event handler (a name starting with "on", in any case):
      there is no constructor for one, and Aria and Data write "aria-"
      and "data-" before the rest of their name;
-   * none takes a URL: href, src, action, formaction and xlink:href are
+   * none takes a URL: href, src, poster, action, formaction and xlink:href are
      url_attribute's, and only set_url and set_url_literal set them.
    The list is of what is allowed, not of what is not, so an attribute
-   not thought of (srcdoc, poster, ping, ...) cannot be set at all *)
+   not thought of (srcdoc, ping, ...) cannot be set at all *)
 #pub datavtype attribute =
   | Accept | Alt | Autocapitalize | Autocomplete | Checked | Class | Cols
   | Colspan | Controls | Dir | Disabled | Download | Draggable | Enterkeyhint | For
   | Height | Hidden | Inert | Inputmode | Lang | Loading | Max | Maxlength | Min
-  | Minlength | Multiple | Name | Open | Pattern | Placeholder | Readonly
+  | Minlength | Multiple | Name | Open | Pattern | Placeholder | Preload | Readonly
   | Rel | Required | Role | Rows | Rowspan | Selected | Size | Spellcheck
   | Step | Style | Tabindex | Target | Title | Translate | Type | Value
   | Width
@@ -188,7 +188,7 @@ vtypedef doc_vt(l:addr) = document(l)
 (* The attributes whose value is a URL. A URL is put in one only by
    set_url (bytes checked as they are set) or set_url_literal (whose
    scheme is its constructor's), so a javascript: URL never is *)
-#pub datatype url_attribute = Href | Src | Action | Formaction | XlinkHref
+#pub datatype url_attribute = Href | Src | Action | Formaction | XlinkHref | Poster
 
 (* URL attribute name of element id: v[off, off + len), only when it is
    a URL that runs no script: an http:, https:, blob: or mailto: URL
@@ -1630,7 +1630,8 @@ fn _attribute_parts (name: attribute)
   | ~Maxlength() => @("maxlength", "") | ~Min() => @("min", "")
   | ~Minlength() => @("minlength", "") | ~Multiple() => @("multiple", "")
   | ~Name() => @("name", "") | ~Open() => @("open", "") | ~Pattern() => @("pattern", "")
-  | ~Placeholder() => @("placeholder", "") | ~Readonly() => @("readonly", "")
+  | ~Placeholder() => @("placeholder", "") | ~Preload() => @("preload", "")
+  | ~Readonly() => @("readonly", "")
   | ~Rel() => @("rel", "") | ~Required() => @("required", "") | ~Role() => @("role", "")
   | ~Rows() => @("rows", "") | ~Rowspan() => @("rowspan", "")
   | ~Selected() => @("selected", "") | ~Size() => @("size", "")
@@ -1645,6 +1646,7 @@ fn _url_attribute_word (name: url_attribute): [n:pos | n < 16] string n =
   case+ name of
   | Href() => "href" | Src() => "src" | Action() => "action"
   | Formaction() => "formaction" | XlinkHref() => "xlink:href"
+  | Poster() => "poster"
 
 (* [u8 length][word][rest] at off; the offset after it *)
 fn _write_name
