@@ -1,0 +1,12 @@
+[package]
+name = "book-container-after-close"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"builder" = ""
+"css" = ""
+"promise" = ""
+"result" = ""
+"wasm.bats-packages.dev/bridge" = ""
+"wasm.bats-packages.dev/dom" = ""

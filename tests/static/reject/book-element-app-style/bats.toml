@@ -1,0 +1,12 @@
+[package]
+name = "book-element-app-style"
+kind = "lib"
+
+[dependencies]
+"array" = ""
+"builder" = ""
+"css" = ""
+"promise" = ""
+"result" = ""
+"wasm.bats-packages.dev/bridge" = ""
+"wasm.bats-packages.dev/dom" = ""
