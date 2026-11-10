@@ -2,16 +2,15 @@
    stream (proofs of outside bytes) with css's trees of proved spans (keyword:
    book document; bats-lang/quire#1063, design sections 3.1 to 3.6, dom#126)
 
-   A book_document holds bridge's book_stream and the OUTSIDE_READ(cs) proof
-   of the one array of outside bytes (cs) its chapter is read from. Every
-   operation that copies a span of bytes takes that array's cborrow, so a span
-   of an array the program wrote does not type-check (book-container-unproved).
-   The css trees are indexed by the same cells cs and the layout g, so a tree
-   of another source (book-style-other-source) or another layout
-   (book-layout-mismatch) does not type-check either. No operation takes bytes
-   for a sheet or a style: they are written from the tree, as pieces (css's
-   book_sheet_pieces and book_style_pieces), so book-sheet-from-bytes does not
-   type-check.
+   A book_document holds bridge's book_stream, for the layout g. Every operation
+   that copies a span of bytes takes the OUTSIDE_READ(cs) proof of the array the
+   span is of, and that array's cborrow, so a span of an array the program wrote
+   does not type-check (book-container-unproved, book-sheet-unproved). The css
+   trees are indexed by the cells and the layout g, so a tree of another source
+   (book-style-other-source) or another layout (book-layout-mismatch) does not
+   type-check either. No operation takes bytes for a sheet or a style: they are
+   written from the tree, as pieces (css's book_sheet_pieces and
+   book_style_pieces), so book-sheet-from-bytes does not type-check.
 
    A book_container is the linear token of the container made at the chapter's
    root element: only a ROOT_TAG(cs, o), the proof that the bytes at o are
@@ -19,10 +18,10 @@
    element borrows it, and close_book_container consumes it, so a container is
    not used after it is closed (book-container-after-close) and is not left
    open (book-container-leaked). The ordinary operations of a book document
-   take a narrower attribute (book_attribute), which has no Style, and a data
-   attribute name only with BOOK_DATA_FREE, the proof that it does not start
-   with book- (bridge refuses data-book-* on every element, and no name of
-   that form is written). *)
+   take a narrower attribute (book_attribute), which has no Style
+   (book-element-app-style), and a data attribute name only with
+   BOOK_DATA_FREE, the proof that it does not start with book- (bridge refuses
+   data-book-* on every element, and no name of that form is written). *)
 
 #include "share/atspre_staload.hats"
 
@@ -69,14 +68,13 @@ staload CB = "css/src/book.sats"
 #pub fun book_data_scan {l:agz}{n:pos}{cs:$A.cells}
   (src: !$A.cborrow(l, n, cs), len: int n): [b:bool] (BOOK_DATA_FREE_OPT(cs, n, b) | bool b)
 
-(* A chapter's open stream, for the layout g (1 reflow, 2 fixed) and the
-   outside bytes cs. Linear: close_book_document flushes and frees it *)
+(* A chapter's open stream, for the layout g (1 reflow, 2 fixed). Linear:
+   close_book_document flushes and frees it *)
 #pub datavtype book_document(g: int) =
   | {g:int | g == 1 || g == 2} book_document_mk(g) of ($BC.book_stream, int g)
 
-(* The container of a chapter's document: the id it was made with (kept as
-   outside-independent cells of its own, with the proof bridge's encoder took).
-   Linear: close_book_container consumes it *)
+(* The container of a chapter's document: the id it was made with, kept as
+   cells of its own. Linear: close_book_container consumes it *)
 #pub datavtype book_container(g: int) =
   | {g:int}{lc:agz}{nc:pos | nc <= 64}{csc:$A.cells}
     book_container_mk(g) of ($A.cfrozen(lc, nc, 1, csc), $A.cborrow(lc, nc, csc), int nc)
@@ -111,7 +109,7 @@ staload CB = "css/src/book.sats"
   | BookRowspan | BookTabindex | BookTitle | BookWidth
   | {n:pos | n < 240} BookAria of (string n)   (* aria-<the n bytes> *)
 
-(* A book document for the layout g over the outside bytes cs *)
+(* A book document for the layout g *)
 #pub fun open_book_document {g:int | g == 1 || g == 2} (layout: int g): book_document(g)
 
 (* Flushes the stream and frees the document *)
