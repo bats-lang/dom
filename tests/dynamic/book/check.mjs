@@ -11,8 +11,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const chapter = '<html><body>p intro lead'; // 24 bytes
-const sheet = 'p{color:red}.intro{margin:0}'; // 28
-const style = 'color:red;margin:0'; // 18
+const sheet = 'p{margin:0}.intro{font-style:italic}'; // 36
+const style = 'margin:0;font-weight:bold'; // 25
 const script = chapter + sheet + style;
 
 const dom = new JSDOM(
@@ -60,7 +60,14 @@ unlinkSync(tmp);
 const shown = [];
 console.log = (...parts) => shown.push(parts.join(' ').replace(/^\[bats:\w+\] /, ''));
 console.info = console.log;
-await loadWASM(readFileSync('dist/debug/app.wasm'), document.getElementById('bats-root'), {});
+// bats-lang/bats#646: the wasm prelude lacks the llint operations css's contrast.bats
+// imports. They are used only for a text colour (css keeps a colour by its contrast), and
+// this chapter declares none, so each stands in as a function that fails if it is ever called
+const never = (name) => () => { throw new Error(`${name} called: the chapter must declare no colour`); };
+const extraImports = Object.fromEntries(
+  ['atspre_g1int2int_int_llint', 'atspre_g1int_add_llint', 'atspre_g1int_mul_llint', 'atspre_g1int_gte_llint']
+    .map((n) => [n, never(n)]));
+await loadWASM(readFileSync('dist/debug/app.wasm'), document.getElementById('bats-root'), { extraImports });
 await new Promise((r) => setTimeout(r, 200));
 
 // The stream the operations write, as bytes: a name is [u16 length][bytes]
@@ -74,16 +81,12 @@ const op = {
   element: [14, ...name('chap'), ...name('c1'), ...name('chap'), 1, ...bytes('p'), 1, ...bytes('p')],
   // SET_BOOK_NAMES [16][container][id][u8 kind][u16 length][bytes]
   names: [16, ...name('chap'), ...name('c1'), 1, ...name('intro lead')],
-  // the style color:red;margin:0 in the pieces css gives: a property name, ":", the value
+  // the style margin:0;font-weight:bold in the pieces css gives: a property name, ":", the value
   // (a span of the file), ";": BOOK_STYLE_TEXT [19][container][id][u16 length][bytes], BOOK_STYLE_END [20][container][id]
   style: [
-    ...[ 'color', ':', 'red', ';', 'margin', ':', '0', ';' ].flatMap((t) => [19, ...name('chap'), ...name('c1'), ...name(t)]),
+    ...[ 'margin', ':', '0', ';', 'font-weight', ':', 'bold', ';' ].flatMap((t) => [19, ...name('chap'), ...name('c1'), ...name(t)]),
     20, ...name('chap'), ...name('c1'),
   ],
-  // the sheet in the pieces of css: each rule is the container prefix, the
-  // selector rewritten to the book's elements, and the declarations;
-  // BOOK_SHEET_TEXT [17][container][u16 length][bytes], BOOK_SHEET_END [18][container]
-  sheet: null,
   // CREATE_ELEMENT [4][id][parent][u8 length][tag], SET_TEXT [1][id][u16 length][bytes],
   // APPEND_TEXT [6], SET_ATTR [2][id][u8 name length][name][u16 length][value], REMOVE_ATTR [7][id][u8 length][name]
   app: [
@@ -92,12 +95,12 @@ const op = {
     6, ...name('app1'), ...name('hello'),
     2, ...name('app1'), 5, ...bytes('title'), ...name('mine'),
     7, ...name('app1'), 8, ...bytes('tabindex'),
-    2, ...name('app1'), 6, ...bytes('data-x-y'), ...name('mine'),
+    2, ...name('app1'), 8, ...bytes('data-x-y'), ...name('mine'),
   ],
 };
-// the sheet text as the pieces concatenate: the pieces of one rule are written in order
+// the sheet: BOOK_SHEET_TEXT [17][container][u16 length][bytes] pieces, then BOOK_SHEET_END [18][container];
+// each rule is the container prefix, the selector rewritten to the book's elements, and the declarations
 const sheetPieces = [];
-let rest = null;
 const flush = flushes[0] ?? [];
 // split the flush into its operations by walking the formats
 let i = 0;
@@ -133,12 +136,12 @@ const check = (label, got, want) => {
 const order = ['container', 'element', 'names', 'style', 'sheet', 'app'];
 check('operations in order', ops.map((o) => o.kind), order);
 for (const o of ops) if (o.kind !== 'sheet') check(o.kind, o.bytes, op[o.kind]);
-// the sheet: the pieces joined are the text of the sheet, written here by hand
+// the pieces joined are the text of the sheet, written here by hand
 const sheetText = sheetPieces.join('');
 const wantSheet =
-  `${p}:is(p):where([data-book-element="p"]){color:red;}` ;
-out.push(`sheet pieces: ${JSON.stringify(sheetPieces)}`);
-out.push(`sheet text: ${sheetText}`);
+  `${p}p:where([data-book-element]){margin:0;}` +
+  `${p}:where([data-book-element])[data-book-class~="intro"]{font-style:italic;}`;
+check('sheet', [...Buffer.from(sheetText)], [...Buffer.from(wantSheet)]);
 check('flushes', [flushes.length], [1]);
 
 out.push('== book');

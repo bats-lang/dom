@@ -17,8 +17,8 @@ staload CB = "css/src/book.sats"
      0 to 23    the chapter: <html><body>p intro lead
                 (the root tag at 0, the element name "p" at 12, the class
                 names "intro lead" at 14)
-     24 to 51   the sheet: p{color:red}.intro{margin:0}
-     52 to 69   the style: color:red;margin:0
+     24 to 59   the sheet: p{margin:0}.intro{font-style:italic}
+     60 to 84   the style: margin:0;font-weight:bold
    The app logs "@snap book" at the end, when check.mjs reads the document and
    the bytes of the flushes. *)
 
@@ -77,13 +77,15 @@ fn play {l:agz}{n:pos}{cs:$A.cells}{l2:agz}{n2:pos}{cs2:$A.cells}{l3:agz}{n3:pos
       | ~$DB.BookContainerMade(c) => let
           val () = (if n >= 24 then
               $DB.add_book_element(pfd | doc, c, eb, 2, cbid, 4, $DB.BookTagP(), chapter, 12, 1) else ())
-          val () = (if n >= 24 then $DB.set_book_names(pfd | doc, c, eb, 1, chapter, 14, 10) else ())
+          val () = (if n >= 24 then $DB.set_book_names(pfd | doc, c, eb, 2, 1, chapter, 14, 10) else ())
           val read = $CB.book_sheet_read(sheet, n2, 1, @(255, 255, 255), @(250, 240, 220))
+          val read_y = $CB.book_sheet_read(style, n3, 1, @(255, 255, 255), @(250, 240, 220))
           val decls = $CB.book_style_read(style, n3, 1, @(255, 255, 255), @(250, 240, 220))
-          val () = $DB.set_book_style(pfy | doc, c, eb, 2, style, read, decls)
+          val () = $DB.set_book_style(pfy | doc, c, eb, 2, style, read_y, decls)
           val () = $DB.add_book_sheet(pfs | doc, c, sheet, read)
           val () = $CB.book_decls_free(decls)
           val () = $CB.book_read_free(read)
+          val () = $CB.book_read_free(read_y)
           val () = $DB.add_book_app_element(doc, ab, 4, eb, 2, $DB.BookTagSpan())
           val () = $DB.set_book_text(doc, ab, 4, tb, 5)
           val () = $DB.append_book_text(doc, ab, 4, tb, 5)
@@ -107,17 +109,17 @@ fn play {l:agz}{n:pos}{cs:$A.cells}{l2:agz}{n2:pos}{cs2:$A.cells}{l3:agz}{n3:pos
   val () = $DB.close_book_document(doc)
 in say("@snap book") end
 
-fn read_and_play {m:nat}{n:int | n >= 70} (f: !$OU.infile_outside(m), n: int n): void = let
+fn read_and_play {m:nat | m >= 85} (f: !$OU.infile_outside(m)): void = let
   val a0 = $A.alloc<byte>(24)
   val @(p0, c0, l0 | b0) = $OU.file_read_outside(f, 0, a0, 24)
-  val a1 = $A.alloc<byte>(28)
-  val @(p1, c1, l1 | b1) = $OU.file_read_outside(f, 24, a1, 28)
-  val a2 = $A.alloc<byte>(18)
-  val @(p2, c2, l2 | b2) = $OU.file_read_outside(f, 52, a2, 18)
+  val a1 = $A.alloc<byte>(36)
+  val @(p1, c1, l1 | b1) = $OU.file_read_outside(f, 24, a1, 36)
+  val a2 = $A.alloc<byte>(25)
+  val @(p2, c2, l2 | b2) = $OU.file_read_outside(f, 60, a2, 25)
   val @(z0, v0) = $A.barr_freeze(b0)
   val @(z1, v1) = $A.barr_freeze(b1)
   val @(z2, v2) = $A.barr_freeze(b2)
-  val () = play(p0, p1, p2 | v0, 24, v1, 28, v2, 18)
+  val () = play(p0, p1, p2 | v0, 24, v1, 36, v2, 25)
   val () = $A.cborrow_drop(z0, v0)
   val () = $A.cborrow_drop(z1, v1)
   val () = $A.cborrow_drop(z2, v2)
@@ -130,7 +132,7 @@ in $A.free<byte>(back2) end
 
 fn handle {m:nat} (f: $OU.infile_outside(m)): void = let
   val n = $OU.file_size_outside(f)
-  val () = (if n >= 70 then read_and_play(f, n) else say("short"))
+  val () = (if n >= 85 then read_and_play(f) else say("short"))
 in $OU.file_close_outside(f) end
 
 implement main0 () = let

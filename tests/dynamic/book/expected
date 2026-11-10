@@ -1,0 +1,18 @@
+operations in order: 6 bytes, as written
+container: 15 bytes, as written
+element: 21 bytes, as written
+names: 24 bytes, as written
+style: 141 bytes, as written
+app: 101 bytes, as written
+sheet: 170 bytes, as written
+flushes: 1 bytes, as written
+== book
+<div id="chap" data-book-container="chap" data-book-layout="1" style="contain: layout paint style !important; isolation: isolate !important;">
+<p id="c1" data-book-element="p" data-book-class="intro lead" style="margin:0;font-weight:bold;">
+<span id="app1" title="mine" data-x-y="mine">hellohello</span>
+</p>
+</div>
+sheets: 1
+  @layer book{[data-book-container="chap"] p:where([data-book-element]){margin:0;}[data-book-container="chap"] :where([data-book-element])[data-book-class~="intro"]{font-style:italic;}}
+faces: 1
+  book-chap-0 1 bytes weight 400 normal
