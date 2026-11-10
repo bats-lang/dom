@@ -23,7 +23,7 @@ in $A.free<byte>($A.thaw<byte>(fz)) end
 
 fn write_chapter {l:agz}{n:pos}{cs:$A.cells}
   (pf: $OU.OUTSIDE_READ(cs) | src: !$A.cborrow(l, n, cs), n: int n): void = let
-  val doc = $DB.open_book_document(pf | 1)
+  val doc = $DB.open_book_document(1)
   val @(rp | root) = $DB.book_root_scan(src, n, 0)
   val @(sz, sb) = lit("stage")
   val @(cz, cbid) = lit("chap")
@@ -31,14 +31,14 @@ fn write_chapter {l:agz}{n:pos}{cs:$A.cells}
   val () = (if root then let
       prval $DB.ROOT_TAG_yes(rt) = rp
     in
-      case+ $DB.add_book_container(rt | doc, src, 0, sb, 5, cbid, 4) of
+      case+ $DB.add_book_container(pf, rt | doc, src, 0, sb, 5, cbid, 4) of
       | ~$DB.BookContainerMade(c) => let
-          val () = $DB.add_book_element(doc, c, eb, 2, sb, 5, $DB.BookTagP(), src, 0, 1)
-          val () = $DB.set_book_names(doc, c, eb, 2, 1, src, 0, 1)
+          val () = $DB.add_book_element(pf | doc, c, eb, 2, sb, 5, $DB.BookTagP(), src, 0, 1)
+          val () = $DB.set_book_names(pf | doc, c, eb, 2, 1, src, 0, 1)
           val read = $CB.book_sheet_read(src, n, 1, @(255, 255, 255), @(250, 240, 220))
           val decls = $CB.book_style_read(src, n, 1, @(255, 255, 255), @(250, 240, 220))
-          val () = $DB.set_book_style(doc, c, eb, 2, src, read, decls)
-          val () = $DB.add_book_sheet(doc, c, src, read)
+          val () = $DB.set_book_style(pf | doc, c, eb, 2, src, read, decls)
+          val () = $DB.add_book_sheet(pf | doc, c, src, read)
           val () = $CB.book_decls_free(decls)
           val () = $CB.book_read_free(read)
           val () = $DB.add_book_font(pf | doc, c, src, 0, 1, 0, 400, 0)

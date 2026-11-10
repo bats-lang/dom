@@ -7,9 +7,15 @@ staload OU = "wasm.bats-packages.dev/bridge/src/outside.bats"
 staload DB = "wasm.bats-packages.dev/dom/src/book.bats"
 staload CB = "css/src/book.sats"
 
-(* A document over bytes the program wrote: array's proof of their length is
-   not the proof that they are outside bytes *)
-fn f {n:pos | n <= 1048576} (n: int n): void = let
+(* A container at a root tag of bytes the program wrote: array's proof of their
+   length is not the proof that they are outside bytes *)
+fn f {n:pos | n <= 1048576}{cs:$A.cells}{lp:agz}{np:pos | np <= 1024}{li:agz}{ni:pos | ni <= 64}{o:nat}
+  (rt: $DB.ROOT_TAG(cs, o) | doc: !$DB.book_document(1), n: int n, at: int o,
+   parent: !$A.borrow(byte, lp, np), plen: int np, id: !$A.borrow(byte, li, ni), ilen: int ni): void = let
   val @(pfc | ba) = $A.barr_of_arr($A.alloc<byte>(n))
-  val doc = $DB.open_book_document(pfc | 1)
-in $DB.close_book_document(doc) end
+  val @(fz, cb) = $A.barr_freeze(ba)
+  val made = $DB.add_book_container(pfc, rt | doc, cb, at, parent, plen, id, ilen)
+  val () = (case+ made of
+    | ~$DB.BookContainerMade(c) => $DB.close_book_container(c)
+    | ~$DB.BookContainerRefused() => ())
+in $A.cborrow_drop(fz, cb) end

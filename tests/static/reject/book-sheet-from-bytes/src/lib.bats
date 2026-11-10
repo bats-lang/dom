@@ -9,6 +9,6 @@ staload CB = "css/src/book.sats"
 
 (* There is no way to give a sheet as bytes *)
 fn f {l:agz}{n:pos}{cs:$A.cells}{g:int}{lb:agz}{nb:pos}
-  (doc: !$DB.book_document(cs, g), c: !$DB.book_container(cs, g),
+  (pf: $OU.OUTSIDE_READ(cs) | doc: !$DB.book_document(g), c: !$DB.book_container(g),
    src: !$A.cborrow(l, n, cs), bytes: !$A.borrow(byte, lb, nb)): void =
-  $DB.add_book_sheet(doc, c, src, bytes)
+  $DB.add_book_sheet(pf | doc, c, src, bytes)

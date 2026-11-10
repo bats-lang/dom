@@ -9,6 +9,6 @@ staload CB = "css/src/book.sats"
 
 (* A document for the reflow layout (1) given a sheet read in the fixed grammar (2) *)
 fn f {l:agz}{n:pos}{cs:$A.cells}
-  (doc: !$DB.book_document(cs, 1), c: !$DB.book_container(cs, 1),
+  (pf: $OU.OUTSIDE_READ(cs) | doc: !$DB.book_document(1), c: !$DB.book_container(1),
    src: !$A.cborrow(l, n, cs), read: !$CB.book_read(cs, n, 2)): void =
-  $DB.add_book_sheet(doc, c, src, read)
+  $DB.add_book_sheet(pf | doc, c, src, read)

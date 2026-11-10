@@ -71,20 +71,19 @@ staload CB = "css/src/book.sats"
 
 (* A chapter's open stream, for the layout g (1 reflow, 2 fixed) and the
    outside bytes cs. Linear: close_book_document flushes and frees it *)
-#pub datavtype book_document(cs: $A.cells, g: int) =
-  | {cs:$A.cells}{g:int | g == 1 || g == 2}
-    book_document_mk(cs, g) of ($OU.OUTSIDE_READ(cs) | $BC.book_stream, int g)
+#pub datavtype book_document(g: int) =
+  | {g:int | g == 1 || g == 2} book_document_mk(g) of ($BC.book_stream, int g)
 
 (* The container of a chapter's document: the id it was made with (kept as
    outside-independent cells of its own, with the proof bridge's encoder took).
    Linear: close_book_container consumes it *)
-#pub datavtype book_container(cs: $A.cells, g: int) =
-  | {cs:$A.cells}{g:int}{lc:agz}{nc:pos | nc <= 64}{csc:$A.cells}
-    book_container_mk(cs, g) of ($A.cfrozen(lc, nc, 1, csc), $A.cborrow(lc, nc, csc), int nc)
+#pub datavtype book_container(g: int) =
+  | {g:int}{lc:agz}{nc:pos | nc <= 64}{csc:$A.cells}
+    book_container_mk(g) of ($A.cfrozen(lc, nc, 1, csc), $A.cborrow(lc, nc, csc), int nc)
 
-#pub datavtype book_container_made(cs: $A.cells, g: int) =
-  | {cs:$A.cells}{g:int} BookContainerMade(cs, g) of book_container(cs, g)
-  | {cs:$A.cells}{g:int} BookContainerRefused(cs, g) of ()
+#pub datavtype book_container_made(g: int) =
+  | {g:int} BookContainerMade(g) of book_container(g)
+  | {g:int} BookContainerRefused(g) of ()
 
 (* The elements a book may make: dom's tags without the controls (button,
    canvas, dialog, fieldset, input, label, legend, meter, optgroup, option,
@@ -113,30 +112,30 @@ staload CB = "css/src/book.sats"
   | {n:pos | n < 240} BookAria of (string n)   (* aria-<the n bytes> *)
 
 (* A book document for the layout g over the outside bytes cs *)
-#pub fun open_book_document {cs:$A.cells}{g:int | g == 1 || g == 2}
-  (pf: $OU.OUTSIDE_READ(cs) | layout: int g): book_document(cs, g)
+#pub fun open_book_document {g:int | g == 1 || g == 2} (layout: int g): book_document(g)
 
 (* Flushes the stream and frees the document *)
-#pub fun close_book_document {cs:$A.cells}{g:int} (doc: book_document(cs, g)): void
+#pub fun close_book_document {g:int} (doc: book_document(g)): void
 
 (* The container of the chapter: opcode 13 under the element parent, with
    the id id (a letter, then letters, digits or hyphens), at the root tag at
    at. Refused (nothing is written) when id is no container id *)
 #pub fun add_book_container
   {l:agz}{n:nat}{cs:$A.cells}{o:nat}{g:int}{lp:agz}{np:pos | np <= 1024}{li:agz}{ni:pos | ni <= 64}
-  (root: ROOT_TAG(cs, o) |
-   doc: !book_document(cs, g), src: !$A.cborrow(l, n, cs), at: int o,
+  (pf: $OU.OUTSIDE_READ(cs), root: ROOT_TAG(cs, o) |
+   doc: !book_document(g), src: !$A.cborrow(l, n, cs), at: int o,
    parent: !$A.borrow(byte, lp, np), plen: int np,
-   id: !$A.borrow(byte, li, ni), ilen: int ni): book_container_made(cs, g)
+   id: !$A.borrow(byte, li, ni), ilen: int ni): book_container_made(g)
 
 (* Consumes the container *)
-#pub fun close_book_container {cs:$A.cells}{g:int} (c: book_container(cs, g)): void
+#pub fun close_book_container {g:int} (c: book_container(g)): void
 
 (* A book element: opcode 14, named (data-book-element) by src[name_off, name_off + name_len) *)
 #pub fun add_book_element
   {l:agz}{n:nat}{cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{lp:agz}{np:pos | np <= 1024}
   {o,k:nat | o + k <= n; k <= 255}
-  (doc: !book_document(cs, g), c: !book_container(cs, g),
+  (pf: $OU.OUTSIDE_READ(cs) |
+   doc: !book_document(g), c: !book_container(g),
    id: !$A.borrow(byte, li, ni), ilen: int ni, parent: !$A.borrow(byte, lp, np), plen: int np,
    tag: book_tag, src: !$A.cborrow(l, n, cs), name_off: int o, name_len: int k): void
 
@@ -144,7 +143,8 @@ staload CB = "css/src/book.sats"
 #pub fun set_book_names
   {l:agz}{n:nat}{cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{kind:int | 1 <= kind; kind <= 3}
   {o,k:nat | o + k <= n; k <= 65535}
-  (doc: !book_document(cs, g), c: !book_container(cs, g),
+  (pf: $OU.OUTSIDE_READ(cs) |
+   doc: !book_document(g), c: !book_container(g),
    id: !$A.borrow(byte, li, ni), ilen: int ni, kind: int kind,
    src: !$A.cborrow(l, n, cs), off: int o, len: int k): void
 
@@ -153,14 +153,16 @@ staload CB = "css/src/book.sats"
    written without the container's id (bridge has no id piece for a style) *)
 #pub fun set_book_style
   {l:agz}{n:nat}{cs:$A.cells}{g:int}{t:nat}{li:agz}{ni:pos | ni <= 1024}
-  (doc: !book_document(cs, g), c: !book_container(cs, g),
+  (pf: $OU.OUTSIDE_READ(cs) |
+   doc: !book_document(g), c: !book_container(g),
    id: !$A.borrow(byte, li, ni), ilen: int ni,
    src: !$A.cborrow(l, n, cs), read: !$CB.book_read(cs, n, g), decls: !$CB.book_decls(cs, n, g, t)): void
 
 (* The chapter's sheet, written from the rules css read (opcodes 17 and 18) *)
 #pub fun add_book_sheet
   {l:agz}{n:nat}{cs:$A.cells}{g:int}
-  (doc: !book_document(cs, g), c: !book_container(cs, g),
+  (pf: $OU.OUTSIDE_READ(cs) |
+   doc: !book_document(g), c: !book_container(g),
    src: !$A.cborrow(l, n, cs), read: !$CB.book_read(cs, n, g)): void
 
 (* The face number face (below 32) of the chapter from the bytes src[off, off +
@@ -168,10 +170,10 @@ staload CB = "css/src/book.sats"
    the container is there. weight is 1 to 1000 and style 0 normal, 1 italic,
    2 oblique *)
 #pub fun add_book_font
-  {l:agz}{n:nat}{csf:$A.cells}{cs:$A.cells}{g:int}{o:nat}{k:pos | o + k <= n}
+  {l:agz}{n:nat}{csf:$A.cells}{g:int}{o:nat}{k:pos | o + k <= n}
   {face:nat | face < 32}{weight:int | 1 <= weight; weight <= 1000}{style:int | 0 <= style; style <= 2}
   (pf: $OU.OUTSIDE_READ(csf) |
-   doc: !book_document(cs, g), c: !book_container(cs, g),
+   doc: !book_document(g), c: !book_container(g),
    src: !$A.cborrow(l, n, csf), off: int o, len: int k,
    face: int face, weight: int weight, style: int style): void
 
@@ -179,36 +181,36 @@ staload CB = "css/src/book.sats"
    the container (add_book_app_element), text, attributes. Inside a container
    bridge refuses style and data-book-* on them *)
 #pub fun add_book_app_element
-  {cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{lp:agz}{np:pos | np <= 1024}
-  (doc: !book_document(cs, g),
+  {g:int}{li:agz}{ni:pos | ni <= 1024}{lp:agz}{np:pos | np <= 1024}
+  (doc: !book_document(g),
    id: !$A.borrow(byte, li, ni), ilen: int ni, parent: !$A.borrow(byte, lp, np), plen: int np,
    tag: book_tag): void
 
 #pub fun set_book_text
-  {cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{lt:agz}{nt:nat | nt <= 65535}
-  (doc: !book_document(cs, g), id: !$A.borrow(byte, li, ni), ilen: int ni,
+  {g:int}{li:agz}{ni:pos | ni <= 1024}{lt:agz}{nt:nat | nt <= 65535}
+  (doc: !book_document(g), id: !$A.borrow(byte, li, ni), ilen: int ni,
    t: !$A.borrow(byte, lt, nt), tlen: int nt): void
 
 #pub fun append_book_text
-  {cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{lt:agz}{nt:nat | nt <= 65535}
-  (doc: !book_document(cs, g), id: !$A.borrow(byte, li, ni), ilen: int ni,
+  {g:int}{li:agz}{ni:pos | ni <= 1024}{lt:agz}{nt:nat | nt <= 65535}
+  (doc: !book_document(g), id: !$A.borrow(byte, li, ni), ilen: int ni,
    t: !$A.borrow(byte, lt, nt), tlen: int nt): void
 
 #pub fun set_book_attr
-  {cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{lv:agz}{nv:nat | nv <= 65535}
-  (doc: !book_document(cs, g), id: !$A.borrow(byte, li, ni), ilen: int ni, name: book_attribute,
+  {g:int}{li:agz}{ni:pos | ni <= 1024}{lv:agz}{nv:nat | nv <= 65535}
+  (doc: !book_document(g), id: !$A.borrow(byte, li, ni), ilen: int ni, name: book_attribute,
    v: !$A.borrow(byte, lv, nv), vlen: int nv): void
 
 #pub fun remove_book_attr
-  {cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}
-  (doc: !book_document(cs, g), id: !$A.borrow(byte, li, ni), ilen: int ni, name: book_attribute): void
+  {g:int}{li:agz}{ni:pos | ni <= 1024}
+  (doc: !book_document(g), id: !$A.borrow(byte, li, ni), ilen: int ni, name: book_attribute): void
 
 (* The data attribute data-<name> of an element: name does not start with book- *)
 #pub fun set_book_data
-  {cs:$A.cells}{g:int}{li:agz}{ni:pos | ni <= 1024}{ln:agz}{nn:pos | nn < 240}{csn:$A.cells}
+  {g:int}{li:agz}{ni:pos | ni <= 1024}{ln:agz}{nn:pos | nn < 240}{csn:$A.cells}
   {lv:agz}{nv:nat | nv <= 65535}
   (free: BOOK_DATA_FREE(csn, nn) |
-   doc: !book_document(cs, g), id: !$A.borrow(byte, li, ni), ilen: int ni,
+   doc: !book_document(g), id: !$A.borrow(byte, li, ni), ilen: int ni,
    name: !$A.cborrow(ln, nn, csn), nlen: int nn, v: !$A.borrow(byte, lv, nv), vlen: int nv): void
 
 (* ============================================================
@@ -363,15 +365,15 @@ in @(fz, b, wl + rl) end
    The document and the container
    ============================================================ *)
 
-implement open_book_document{cs}{g}(pf | layout) = book_document_mk(pf | $BC.book_stream_new(), layout)
+implement open_book_document{g}(layout) = book_document_mk($BC.book_stream_new(), layout)
 
-implement close_book_document{cs}{g}(doc) = let
-  val ~book_document_mk(_ | s, _) = doc
+implement close_book_document{g}(doc) = let
+  val ~book_document_mk(s, _) = doc
   val () = $BC.dom_flush_book(s)
 in $BC.book_stream_free(s) end
 
-implement add_book_container{l}{n}{cs}{o}{g}{lp}{np}{li}{ni}(root | doc, src, at, parent, plen, id, ilen) = let
-  val+ @book_document_mk(pf | s, layout) = doc
+implement add_book_container{l}{n}{cs}{o}{g}{lp}{np}{li}{ni}(pf, root | doc, src, at, parent, plen, id, ilen) = let
+  val+ @book_document_mk(s, layout) = doc
   val ida = $A.alloc<byte>(ilen)
   val () = $A.write_borrow(ida, 0, id, ilen)
   val @(_ | idb) = $A.barr_of_arr(ida)
@@ -391,7 +393,7 @@ in
   in BookContainerRefused() end
 end
 
-implement close_book_container{cs}{g}(c) = let
+implement close_book_container{g}(c) = let
   val ~book_container_mk(fz, cb, _) = c
   val () = $A.cborrow_drop(fz, cb)
 in $A.free<byte>($A.barr_to_arr($A.barr_thaw(fz))) end
@@ -401,8 +403,8 @@ in $A.free<byte>($A.barr_to_arr($A.barr_thaw(fz))) end
    ============================================================ *)
 
 implement add_book_element{l}{n}{cs}{g}{li}{ni}{lp}{np}{o,k}
-  (doc, c, id, ilen, parent, plen, tag, src, name_off, name_len) = let
-  val+ @book_document_mk(pf | s, _) = doc
+  (pf | doc, c, id, ilen, parent, plen, tag, src, name_off, name_len) = let
+  val+ @book_document_mk(s, _) = doc
   val+ @book_container_mk(fz, cb, cn) = c
   val cv = $A.cborrow_view(fz, cb)
   val tn = _tag_name(tag)
@@ -415,8 +417,8 @@ implement add_book_element{l}{n}{cs}{g}{li}{ni}{lp}{np}{o,k}
   prval () = fold@(doc)
 in end
 
-implement set_book_names{l}{n}{cs}{g}{li}{ni}{kind}{o,k}(doc, c, id, ilen, kind, src, off, len) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement set_book_names{l}{n}{cs}{g}{li}{ni}{kind}{o,k}(pf | doc, c, id, ilen, kind, src, off, len) = let
+  val+ @book_document_mk(s, _) = doc
   val+ @book_container_mk(fz, cb, cn) = c
   val cv = $A.cborrow_view(fz, cb)
   val () = $BC.book_names(pf | s, cv, cn, id, ilen, kind, src, off, len)
@@ -467,8 +469,8 @@ fun _sheet_pieces {l:agz}{n:nat}{cs:$A.cells}{lc:agz}{nc:pos | nc <= 64}{t:nat} 
       val () = $BC.book_sheet_id(s, cb, cn)
     in _sheet_pieces(pf | s, src, cb, cn, rest) end
 
-implement add_book_sheet{l}{n}{cs}{g}(doc, c, src, read) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement add_book_sheet{l}{n}{cs}{g}(pf | doc, c, src, read) = let
+  val+ @book_document_mk(s, _) = doc
   val+ @book_container_mk(fz, cb, cn) = c
   val cv = $A.cborrow_view(fz, cb)
   val () = _sheet_pieces(pf | s, src, cv, cn, $CB.book_sheet_pieces(src, read))
@@ -509,8 +511,8 @@ fun _style_pieces {l:agz}{n:nat}{cs:$A.cells}{lc:agz}{nc:pos | nc <= 64}{li:agz}
     in _style_pieces(pf | s, run, src, cb, cn, id, idn, rest) end
   | ~$CB.BPContainer(rest) => _style_pieces(pf | s, run, src, cb, cn, id, idn, rest)
 
-implement set_book_style{l}{n}{cs}{g}{t}{li}{ni}(doc, c, id, ilen, src, read, decls) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement set_book_style{l}{n}{cs}{g}{t}{li}{ni}(pf | doc, c, id, ilen, src, read, decls) = let
+  val+ @book_document_mk(s, _) = doc
   val+ @book_container_mk(fz, cb, cn) = c
   val cv = $A.cborrow_view(fz, cb)
   val run = $BC.book_style_begin(cv, id)
@@ -525,9 +527,9 @@ in end
    Faces
    ============================================================ *)
 
-implement add_book_font{l}{n}{csf}{cs}{g}{o}{k}{face}{weight}{style}
+implement add_book_font{l}{n}{csf}{g}{o}{k}{face}{weight}{style}
   (pff | doc, c, src, off, len, face, weight, style) = let
-  val+ @book_document_mk(pf | s, _) = doc
+  val+ @book_document_mk(s, _) = doc
   val+ @book_container_mk(fz, cb, cn) = c
   val cv = $A.cborrow_view(fz, cb)
   val () = $BC.dom_flush_book(s)
@@ -541,8 +543,8 @@ in end
    The ordinary operations
    ============================================================ *)
 
-implement add_book_app_element{cs}{g}{li}{ni}{lp}{np}(doc, id, ilen, parent, plen, tag) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement add_book_app_element{g}{li}{ni}{lp}{np}(doc, id, ilen, parent, plen, tag) = let
+  val+ @book_document_mk(s, _) = doc
   val tn = _tag_name(tag)
   val @(tz, tb) = _lit(tn)
   val () = $BC.book_create_element(s, id, ilen, parent, plen, tb, g1u2i(string1_length(tn)))
@@ -550,20 +552,20 @@ implement add_book_app_element{cs}{g}{li}{ni}{lp}{np}(doc, id, ilen, parent, ple
   prval () = fold@(doc)
 in end
 
-implement set_book_text{cs}{g}{li}{ni}{lt}{nt}(doc, id, ilen, t, tlen) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement set_book_text{g}{li}{ni}{lt}{nt}(doc, id, ilen, t, tlen) = let
+  val+ @book_document_mk(s, _) = doc
   val () = $BC.book_set_text(s, id, ilen, t, tlen)
   prval () = fold@(doc)
 in end
 
-implement append_book_text{cs}{g}{li}{ni}{lt}{nt}(doc, id, ilen, t, tlen) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement append_book_text{g}{li}{ni}{lt}{nt}(doc, id, ilen, t, tlen) = let
+  val+ @book_document_mk(s, _) = doc
   val () = $BC.book_append_text(s, id, ilen, t, tlen)
   prval () = fold@(doc)
 in end
 
-implement set_book_attr{cs}{g}{li}{ni}{lv}{nv}(doc, id, ilen, name, v, vlen) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement set_book_attr{g}{li}{ni}{lv}{nv}(doc, id, ilen, name, v, vlen) = let
+  val+ @book_document_mk(s, _) = doc
   val @(word, rest) = _attribute_parts(name)
   val @(nz, nb, nn) = _name_borrow(word, rest)
   val () = $BC.book_set_attr(s, id, ilen, nb, nn, v, vlen)
@@ -571,8 +573,8 @@ implement set_book_attr{cs}{g}{li}{ni}{lv}{nv}(doc, id, ilen, name, v, vlen) = l
   prval () = fold@(doc)
 in end
 
-implement remove_book_attr{cs}{g}{li}{ni}(doc, id, ilen, name) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement remove_book_attr{g}{li}{ni}(doc, id, ilen, name) = let
+  val+ @book_document_mk(s, _) = doc
   val @(word, rest) = _attribute_parts(name)
   val @(nz, nb, nn) = _name_borrow(word, rest)
   val () = $BC.book_remove_attr(s, id, ilen, nb, nn)
@@ -589,8 +591,8 @@ fun _copy_name {ld:agz}{m:nat}{o:addr}{ln:agz}{nn:nat}{cs:$A.cells}{off:nat | of
     val () = $A.write_byte(dst, off + k, c)
   in _copy_name(dst, off, src, len, k + 1) end
 
-implement set_book_data{cs}{g}{li}{ni}{ln}{nn}{csn}{lv}{nv}(free | doc, id, ilen, name, nlen, v, vlen) = let
-  val+ @book_document_mk(pf | s, _) = doc
+implement set_book_data{g}{li}{ni}{ln}{nn}{csn}{lv}{nv}(free | doc, id, ilen, name, nlen, v, vlen) = let
+  val+ @book_document_mk(s, _) = doc
   val a = $A.alloc<byte>(5 + nlen)
   val () = $A.write_text(a, 0, $A.text_lit("data-"), 5)
   val () = _copy_name(a, 5, name, nlen, 0)
