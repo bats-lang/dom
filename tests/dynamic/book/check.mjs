@@ -1,10 +1,4 @@
-// Runs dist/debug/app.wasm through the bridge.js that gen wrote with
-// produce_bridge_app_book, in jsdom. The app reads the outside file "script"
-// (an input whose first file is the three parts below) and writes a chapter
-// with dom's book operations. This prints the document, the sheets and faces
-// the bridge adopted (jsdom has no constructable style sheets or FontFace, so
-// they are stood in for), and checks the bytes of the book stream against a
-// written expectation.
+// book document: app.wasm run through the book bridge in jsdom, its stream bytes checked
 import { JSDOM } from 'jsdom';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,9 +44,10 @@ const flushLine = '  function batsDomFlushBook(bufPtr, len) { bookFlush(bufPtr, 
 if (!src.includes(flushLine)) throw new Error('bridge.js: batsDomFlushBook not found');
 const flushes = [];
 globalThis.__bookFlushes = flushes;
+const flushed = new Promise((resolve) => { globalThis.__bookFlushed = resolve; });
 const recording = '  function batsDomFlushBook(bufPtr, len) {\n' +
   '    globalThis.__bookFlushes.push(Array.from(new Uint8Array(instance.exports.memory.buffer, bufPtr, len)));\n' +
-  '    bookFlush(bufPtr, len, true);\n  }\n';
+  '    bookFlush(bufPtr, len, true);\n    globalThis.__bookFlushed();\n  }\n';
 writeFileSync(tmp, src.slice(0, boot).replace(flushLine, recording) + '\n');
 const { loadWASM } = await import(tmp);
 unlinkSync(tmp);
@@ -60,15 +55,13 @@ unlinkSync(tmp);
 const shown = [];
 console.log = (...parts) => shown.push(parts.join(' ').replace(/^\[bats:\w+\] /, ''));
 console.info = console.log;
-// bats-lang/bats#646: the wasm prelude lacks the llint operations css's contrast.bats
-// imports. They are used only for a text colour (css keeps a colour by its contrast), and
-// this chapter declares none, so each stands in as a function that fails if it is ever called
+// bats-lang/bats#646: the wasm prelude lacks css's llint imports, so each fails if called
 const never = (name) => () => { throw new Error(`${name} called: the chapter must declare no colour`); };
 const extraImports = Object.fromEntries(
   ['atspre_g1int2int_int_llint', 'atspre_g1int_add_llint', 'atspre_g1int_mul_llint', 'atspre_g1int_gte_llint']
     .map((n) => [n, never(n)]));
 await loadWASM(readFileSync('dist/debug/app.wasm'), document.getElementById('bats-root'), { extraImports });
-await new Promise((r) => setTimeout(r, 200));
+await flushed;
 
 // The stream the operations write, as bytes: a name is [u16 length][bytes]
 const bytes = (s) => [...Buffer.from(s)];
@@ -81,14 +74,12 @@ const op = {
   element: [14, ...name('chap'), ...name('c1'), ...name('chap'), 1, ...bytes('p'), 1, ...bytes('p')],
   // SET_BOOK_NAMES [16][container][id][u8 kind][u16 length][bytes]
   names: [16, ...name('chap'), ...name('c1'), 1, ...name('intro lead')],
-  // the style margin:0;font-weight:bold in the pieces css gives: a property name, ":", the value
-  // (a span of the file), ";": BOOK_STYLE_TEXT [19][container][id][u16 length][bytes], BOOK_STYLE_END [20][container][id]
+  // BOOK_STYLE_TEXT [19][container][id][u16 length][bytes] pieces, BOOK_STYLE_END [20]
   style: [
     ...[ 'margin', ':', '0', ';', 'font-weight', ':', 'bold', ';' ].flatMap((t) => [19, ...name('chap'), ...name('c1'), ...name(t)]),
     20, ...name('chap'), ...name('c1'),
   ],
-  // CREATE_ELEMENT [4][id][parent][u8 length][tag], SET_TEXT [1][id][u16 length][bytes],
-  // APPEND_TEXT [6], SET_ATTR [2][id][u8 name length][name][u16 length][value], REMOVE_ATTR [7][id][u8 length][name]
+  // CREATE_ELEMENT [4], SET_TEXT [1], APPEND_TEXT [6], SET_ATTR [2], REMOVE_ATTR [7]
   app: [
     4, ...name('app1'), ...name('c1'), 4, ...bytes('span'),
     1, ...name('app1'), ...name('hello'),
@@ -98,8 +89,7 @@ const op = {
     2, ...name('app1'), 8, ...bytes('data-x-y'), ...name('mine'),
   ],
 };
-// the sheet: BOOK_SHEET_TEXT [17][container][u16 length][bytes] pieces, then BOOK_SHEET_END [18][container];
-// each rule is the container prefix, the selector rewritten to the book's elements, and the declarations
+// the sheet: BOOK_SHEET_TEXT [17][container][u16 length][bytes] pieces, then BOOK_SHEET_END [18]
 const sheetPieces = [];
 const flush = flushes[0] ?? [];
 // split the flush into its operations by walking the formats

@@ -1,27 +1,4 @@
-(* book -- a book chapter's document: the operations that join bridge's book
-   stream (proofs of outside bytes) with css's trees of proved spans (keyword:
-   book document; bats-lang/quire#1063, design sections 3.1 to 3.6, dom#126)
-
-   A book_document holds bridge's book_stream, for the layout g. Every operation
-   that copies a span of bytes takes the OUTSIDE_READ(cs) proof of the array the
-   span is of, and that array's cborrow, so a span of an array the program wrote
-   does not type-check (book-container-unproved, book-sheet-unproved). The css
-   trees are indexed by the cells and the layout g, so a tree of another source
-   (book-style-other-source) or another layout (book-layout-mismatch) does not
-   type-check either. No operation takes bytes for a sheet or a style: they are
-   written from the tree, as pieces (css's book_sheet_pieces and
-   book_style_pieces), so book-sheet-from-bytes does not type-check.
-
-   A book_container is the linear token of the container made at the chapter's
-   root element: only a ROOT_TAG(cs, o), the proof that the bytes at o are
-   <html followed by white space or >, makes one. Every operation on a book
-   element borrows it, and close_book_container consumes it, so a container is
-   not used after it is closed (book-container-after-close) and is not left
-   open (book-container-leaked). The ordinary operations of a book document
-   take a narrower attribute (book_attribute), which has no Style
-   (book-element-app-style), and a data attribute name only with
-   BOOK_DATA_FREE, the proof that it does not start with book- (bridge refuses
-   data-book-* on every element, and no name of that form is written). *)
+(* book document: bridge's book stream joined with css's proved spans (bats-lang/quire#1063) *)
 
 #include "share/atspre_staload.hats"
 
@@ -31,13 +8,7 @@ staload OU = "wasm.bats-packages.dev/bridge/src/outside.bats"
 staload BC = "wasm.bats-packages.dev/bridge/src/book_content.bats"
 staload CB = "css/src/book.sats"
 
-(* ============================================================
-   Public API
-   ============================================================ *)
-
-(* The bytes at o are <html and then white space or > (the start tag of the
-   chapter's root). Made only from the byte of each position (NTH facts, which
-   cborrow_get gives); a root written with a prefix has none *)
+(* The bytes at o are <html and then white space or > (book document root tag) *)
 #pub dataprop ROOT_TAG(cs: $A.cells, o: int) =
   | {cs:$A.cells}{o:nat}{c:int | c == 9 || c == 10 || c == 12 || c == 13 || c == 32 || c == 62}
     ROOT_TAG_mk(cs, o) of
@@ -68,13 +39,11 @@ staload CB = "css/src/book.sats"
 #pub fun book_data_scan {l:agz}{n:pos}{cs:$A.cells}
   (src: !$A.cborrow(l, n, cs), len: int n): [b:bool] (BOOK_DATA_FREE_OPT(cs, n, b) | bool b)
 
-(* A chapter's open stream, for the layout g (1 reflow, 2 fixed). Linear:
-   close_book_document flushes and frees it *)
+(* A chapter's open stream for the layout g (1 reflow, 2 fixed), linear *)
 #pub datavtype book_document(g: int) =
   | {g:int | g == 1 || g == 2} book_document_mk(g) of ($BC.book_stream, int g)
 
-(* The container of a chapter's document: the id it was made with, kept as
-   cells of its own. Linear: close_book_container consumes it *)
+(* The container of a chapter's document with its id, linear: close_book_container consumes it *)
 #pub datavtype book_container(g: int) =
   | {g:int}{lc:agz}{nc:pos | nc <= 64}{csc:$A.cells}
     book_container_mk(g) of ($A.cfrozen(lc, nc, 1, csc), $A.cborrow(lc, nc, csc), int nc)
@@ -83,11 +52,7 @@ staload CB = "css/src/book.sats"
   | {g:int} BookContainerMade(g) of book_container(g)
   | {g:int} BookContainerRefused(g) of ()
 
-(* The elements a book may make: dom's tags without the controls (button,
-   canvas, dialog, fieldset, input, label, legend, meter, optgroup, option,
-   output, progress, select, textarea) and without <style>; a book's other
-   names are made as BookTagDiv or BookTagSpan, with the name kept in
-   data-book-element *)
+(* The elements a book may make: dom's tags without controls and <style> (book document tags) *)
 #pub datatype book_tag =
   | BookTagA | BookTagAbbr | BookTagArticle | BookTagAside | BookTagAudio | BookTagB | BookTagBdi
   | BookTagBdo | BookTagBlockquote | BookTagBr | BookTagCaption | BookTagCite | BookTagCode
@@ -101,9 +66,7 @@ staload CB = "css/src/book.sats"
   | BookTagTbody | BookTagTd | BookTagTfoot | BookTagTh | BookTagThead | BookTagTime | BookTagTr
   | BookTagTrack | BookTagU | BookTagUl | BookTagVar | BookTagVideo | BookTagWbr
 
-(* The attributes a book document sets by the ordinary operation. No Style (a
-   book's style is written from css's tree, by set_book_style), and no Data (a
-   data attribute is set by set_book_data) *)
+(* The attributes of the ordinary operation, with no Style and no Data (book document attributes) *)
 #pub datavtype book_attribute =
   | BookAlt | BookClass | BookColspan | BookDir | BookHeight | BookHidden | BookLang | BookRole
   | BookRowspan | BookTabindex | BookTitle | BookWidth
@@ -115,9 +78,7 @@ staload CB = "css/src/book.sats"
 (* Flushes the stream and frees the document *)
 #pub fun close_book_document {g:int} (doc: book_document(g)): void
 
-(* The container of the chapter: opcode 13 under the element parent, with
-   the id id (a letter, then letters, digits or hyphens), at the root tag at
-   at. Refused (nothing is written) when id is no container id *)
+(* The container of the chapter: opcode 13 at its root tag, refused when id is no container id *)
 #pub fun add_book_container
   {l:agz}{n:nat}{cs:$A.cells}{o:nat}{g:int}{lp:agz}{np:pos | np <= 1024}{li:agz}{ni:pos | ni <= 64}
   (pf: $OU.OUTSIDE_READ(cs), root: ROOT_TAG(cs, o) |
@@ -146,9 +107,7 @@ staload CB = "css/src/book.sats"
    id: !$A.borrow(byte, li, ni), ilen: int ni, kind: int kind,
    src: !$A.cborrow(l, n, cs), off: int o, len: int k): void
 
-(* The style of a book element, written from the declarations css read
-   (opcodes 19 and 20); a face the style names by a container-made name is
-   written without the container's id (bridge has no id piece for a style) *)
+(* The style of a book element, written from the declarations css read (opcodes 19 and 20) *)
 #pub fun set_book_style
   {l:agz}{n:nat}{cs:$A.cells}{g:int}{t:nat}{li:agz}{ni:pos | ni <= 1024}
   (pf: $OU.OUTSIDE_READ(cs) |
@@ -163,10 +122,7 @@ staload CB = "css/src/book.sats"
    doc: !book_document(g), c: !book_container(g),
    src: !$A.cborrow(l, n, cs), read: !$CB.book_read(cs, n, g)): void
 
-(* The face number face (below 32) of the chapter from the bytes src[off, off +
-   len) of an outside file (its own proof): what is queued is flushed first, so
-   the container is there. weight is 1 to 1000 and style 0 normal, 1 italic,
-   2 oblique *)
+(* The face number face of the chapter from bytes of an outside file (book document font) *)
 #pub fun add_book_font
   {l:agz}{n:nat}{csf:$A.cells}{g:int}{o:nat}{k:pos | o + k <= n}
   {face:nat | face < 32}{weight:int | 1 <= weight; weight <= 1000}{style:int | 0 <= style; style <= 2}
@@ -175,9 +131,7 @@ staload CB = "css/src/book.sats"
    src: !$A.cborrow(l, n, csf), off: int o, len: int k,
    face: int face, weight: int weight, style: int style): void
 
-(* The ordinary operations of a book document: an element of the app inside
-   the container (add_book_app_element), text, attributes. Inside a container
-   bridge refuses style and data-book-* on them *)
+(* The ordinary operations of a book document: bridge refuses style and data-book-* there *)
 #pub fun add_book_app_element
   {g:int}{li:agz}{ni:pos | ni <= 1024}{lp:agz}{np:pos | np <= 1024}
   (doc: !book_document(g),
@@ -211,10 +165,6 @@ staload CB = "css/src/book.sats"
    doc: !book_document(g), id: !$A.borrow(byte, li, ni), ilen: int ni,
    name: !$A.cborrow(ln, nn, csn), nlen: int nn, v: !$A.borrow(byte, lv, nv), vlen: int nv): void
 
-(* ============================================================
-   The root tag
-   ============================================================ *)
-
 implement book_root_scan{l}{n}{cs}{o}(src, len, at) =
   if at + 5 >= len then (ROOT_TAG_no() | false)
   else let
@@ -243,10 +193,6 @@ implement book_root_scan{l}{n}{cs}{o}(src, len, at) =
        else (ROOT_TAG_no() | false))
     else (ROOT_TAG_no() | false)
   end
-
-(* ============================================================
-   A data attribute name that does not start with book-
-   ============================================================ *)
 
 fn _data_fifth {l:agz}{n:int | n > 4}{cs:$A.cells}{m:nat | m == n} (src: !$A.cborrow(l, m, cs))
   : [b:bool] (BOOK_DATA_FREE_OPT(cs, n, b) | bool b) = let
@@ -293,10 +239,6 @@ implement book_data_scan{l}{n}{cs}(src, len) =
     else (BOOK_DATA_FREE_yes(BOOK_DATA_FREE_first(p0)) | true)
   end
 
-(* ============================================================
-   Strings as borrows
-   ============================================================ *)
-
 (* The bytes of s, as a borrow of exactly its length; let go with _rel *)
 fn _lit {n:pos | n < 256} (s: string n): [l:agz] @($A.frozen(byte, l, n, 1), $A.borrow(byte, l, n)) = let
   val n = g1u2i(string1_length(s))
@@ -307,10 +249,6 @@ in $A.freeze<byte>(a) end
 fn _rel {l:agz}{n:nat} (fz: $A.frozen(byte, l, n, 1), b: $A.borrow(byte, l, n)): void = let
   val () = $A.drop<byte>(fz, b)
 in $A.free<byte>($A.thaw<byte>(fz)) end
-
-(* ============================================================
-   Names
-   ============================================================ *)
 
 fn _tag_name (t: book_tag): [m:pos | m < 256] string m =
   case+ t of
@@ -337,8 +275,7 @@ fn _tag_name (t: book_tag): [m:pos | m < 256] string m =
   | BookTagTrack() => "track" | BookTagU() => "u" | BookTagUl() => "ul" | BookTagVar() => "var"
   | BookTagVideo() => "video" | BookTagWbr() => "wbr"
 
-(* An attribute's name is its word followed by its rest ("aria-" and what Aria
-   holds). Consumes the attribute *)
+(* An attribute's name is its word followed by its rest, and it consumes the attribute *)
 fn _attribute_parts (name: book_attribute)
   : [nw:pos | nw < 16][nr:nat | nr < 240] @(string nw, string nr) =
   case+ name of
@@ -358,10 +295,6 @@ fn _name_borrow {nw:pos | nw < 16}{nr:nat | nr < 240} (word: string nw, rest: st
   val () = $A.write_text(a, wl, $A.text_lit(rest), rl)
   val @(fz, b) = $A.freeze<byte>(a)
 in @(fz, b, wl + rl) end
-
-(* ============================================================
-   The document and the container
-   ============================================================ *)
 
 implement open_book_document{g}(layout) = book_document_mk($BC.book_stream_new(), layout)
 
@@ -396,10 +329,6 @@ implement close_book_container{g}(c) = let
   val () = $A.cborrow_drop(fz, cb)
 in $A.free<byte>($A.barr_to_arr($A.barr_thaw(fz))) end
 
-(* ============================================================
-   Elements and names
-   ============================================================ *)
-
 implement add_book_element{l}{n}{cs}{g}{li}{ni}{lp}{np}{o,k}
   (pf | doc, c, id, ilen, parent, plen, tag, src, name_off, name_len) = let
   val+ @book_document_mk(s, _) = doc
@@ -425,18 +354,13 @@ implement set_book_names{l}{n}{cs}{g}{li}{ni}{kind}{o,k}(pf | doc, c, id, ilen, 
   prval () = fold@(doc)
 in end
 
-(* ============================================================
-   The pieces of a sheet and of a style
-   ============================================================ *)
-
 (* A digit, as a literal of the program *)
 fn _digit (d: int): [m:nat | m <= 1024] string m =
   if d <= 0 then "0" else if d = 1 then "1" else if d = 2 then "2" else if d = 3 then "3"
   else if d = 4 then "4" else if d = 5 then "5" else if d = 6 then "6" else if d = 7 then "7"
   else if d = 8 then "8" else "9"
 
-(* The decimal digits of v from the place p (a power of ten, k places left), no
-   leading zero; the last place is always written *)
+(* The decimal digits of v from the place p (a power of ten, k places left), no leading zero *)
 fun _sheet_num {lc:agz}{nc:pos | nc <= 64}{k:nat} .<k>.
   (s: !$BC.book_stream, cb: !$A.borrow(byte, lc, nc), cn: int nc, v: int, p: int, k: int k, started: bool): void =
   if k <= 1 then $BC.book_sheet_lit(s, cb, cn, _digit(v % 10))
@@ -521,10 +445,6 @@ implement set_book_style{l}{n}{cs}{g}{t}{li}{ni}(pf | doc, c, id, ilen, src, rea
   prval () = fold@(doc)
 in end
 
-(* ============================================================
-   Faces
-   ============================================================ *)
-
 implement add_book_font{l}{n}{csf}{g}{o}{k}{face}{weight}{style}
   (pff | doc, c, src, off, len, face, weight, style) = let
   val+ @book_document_mk(s, _) = doc
@@ -536,10 +456,6 @@ implement add_book_font{l}{n}{csf}{g}{o}{k}{face}{weight}{style}
   prval () = fold@(c)
   prval () = fold@(doc)
 in end
-
-(* ============================================================
-   The ordinary operations
-   ============================================================ *)
 
 implement add_book_app_element{g}{li}{ni}{lp}{np}(doc, id, ilen, parent, plen, tag) = let
   val+ @book_document_mk(s, _) = doc
