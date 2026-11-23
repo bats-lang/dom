@@ -19,7 +19,7 @@ global.FileReader = dom.window.FileReader;
 const file = new dom.window.File([script], 'script.txt');
 Object.defineProperty(document.getElementById('script'), 'files', { value: [file] });
 
-// jsdom 31 adopts only its own constructed sheets: the sheet is jsdom's, keeping the text it was given
+// jsdom 31 adopts only its own sheets (keyword: jsdom-sheet): Sheet keeps the text it was given
 class Sheet extends dom.window.CSSStyleSheet { replaceSync(text) { this.text = text; return super.replaceSync(text); } }
 global.CSSStyleSheet = Sheet;
 class Face {
