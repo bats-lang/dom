@@ -41,7 +41,7 @@ for d in "$ROOT"/tests/dynamic/*/; do
      && diff -u "$d/expected" "$TMP/$n.out"; then
     echo "ok   $n"
   else
-    echo "FAIL $n"; cat "$TMP/$n.log" "$TMP/$n.out" 2>/dev/null | grep -E 'error|Error|FAIL' | head -10; fail=1
+    echo "FAIL $n"; cat "$TMP/$n.log" "$TMP/$n.out" 2>/dev/null; fail=1
   fi
 done
 exit $fail
