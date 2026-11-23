@@ -55,6 +55,13 @@ unlinkSync(tmp);
 const shown = [];
 console.log = (...parts) => shown.push(parts.join(' ').replace(/^\[bats:\w+\] /, ''));
 console.info = console.log;
+// State capture (dom#140): when the event loop empties before the first flush, say what the app logged and
+// what the bridge reported, which this script keeps from the output otherwise
+process.on('beforeExit', () => {
+  if (flushes.length === 0) {
+    process.stderr.write(`no flush before the event loop emptied\nlog: ${JSON.stringify(shown)}\nerrors: ${JSON.stringify(errors)}\n`);
+  }
+});
 // bats-lang/bats#646: the wasm prelude lacks css's llint imports, so each fails if called
 const never = (name) => () => { throw new Error(`${name} called: the chapter must declare no colour`); };
 const extraImports = Object.fromEntries(
