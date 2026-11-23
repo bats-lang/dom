@@ -55,14 +55,6 @@ unlinkSync(tmp);
 const shown = [];
 console.log = (...parts) => shown.push(parts.join(' ').replace(/^\[bats:\w+\] /, ''));
 console.info = console.log;
-// State capture (dom#140): when the process exits before the first flush finished (the await below never settles), say how
-// many flushes were recorded, what the app logged and what the bridge reported, which this script keeps from the output otherwise
-let flushDone = false;
-process.on('exit', () => {
-  if (!flushDone) {
-    process.stderr.write(`exit before the first flush finished\nflushes recorded: ${flushes.length}\nlog: ${JSON.stringify(shown)}\nerrors: ${JSON.stringify(errors)}\n`);
-  }
-});
 // bats-lang/bats#646: the wasm prelude lacks css's llint imports, so each fails if called
 const never = (name) => () => { throw new Error(`${name} called: the chapter must declare no colour`); };
 const extraImports = Object.fromEntries(
@@ -70,7 +62,6 @@ const extraImports = Object.fromEntries(
     .map((n) => [n, never(n)]));
 await loadWASM(readFileSync('dist/debug/app.wasm'), document.getElementById('bats-root'), { extraImports });
 await flushed;
-flushDone = true;
 
 // The stream the operations write, as bytes: a name is [u16 length][bytes]
 const bytes = (s) => [...Buffer.from(s)];
